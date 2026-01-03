@@ -45,9 +45,9 @@ export function UploadBox({ onFileSelect }: UploadBoxProps) {
 
   return (
     <div className="w-full max-w-3xl">
-      <div className="rounded-xl bg-card p-6">
+      <div className="rounded-xl bg-card p-4 sm:p-6">
         <div
-          className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
+          className={`border-2 border-dashed rounded-lg p-8 sm:p-12 text-center transition-colors ${
             isDragging ? 'border-primary bg-primary/5' : 'border-border'
           }`}
           onDrop={handleDrop}

@@ -25,9 +25,9 @@ export default function ResultPage({ params }: ResultPageProps) {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-6xl">
-      <h1 className="text-3xl font-bold mb-6">Processing Results</h1>
-      <p className="text-muted-foreground mb-6">Job ID: {jobId}</p>
+    <div className="container mx-auto mt-16 sm:mt-20 px-4 sm:px-6 max-w-6xl">
+      <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6">Processing Results</h1>
+      <p className="text-muted-foreground mb-4 sm:mb-6 break-all">Job ID: {jobId}</p>
       
       {isLoading && <p className="text-muted-foreground">Loading results...</p>}
       

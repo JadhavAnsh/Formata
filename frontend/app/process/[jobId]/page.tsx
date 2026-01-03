@@ -36,9 +36,9 @@ export default function ProcessPage({ params }: ProcessPageProps) {
   }
 
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
-      <h1 className="text-3xl font-bold mb-6">Processing Job</h1>
-      <p className="text-muted-foreground mb-6">Job ID: {jobId}</p>
+    <div className="container mx-auto mt-16 sm:mt-20 px-4 sm:px-6 max-w-4xl">
+      <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6">Processing Job</h1>
+      <p className="text-muted-foreground mb-4 sm:mb-6 break-all">Job ID: {jobId}</p>
       
       {job && (
         <div className="space-y-4">
