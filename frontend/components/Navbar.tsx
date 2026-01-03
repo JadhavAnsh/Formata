@@ -4,7 +4,14 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
-import { Moon, Sun } from "lucide-react"
+import { Menu, Moon, Sun } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 type Theme = "light" | "dark"
 
@@ -35,16 +42,16 @@ export function Navbar() {
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.5, ease: "easeOut" }}
-      className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 bg-background/80 backdrop-blur-md border-b border-white/5"
+      className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 bg-background/80 backdrop-blur-md border-b border-white/5"
     >
-      <div className="flex items-center gap-8">
+      <div className="flex items-center gap-4 sm:gap-8">
         <Link href="/" className="text-xl font-bold tracking-tighter flex items-center gap-2">
           <div className="w-6 h-6 bg-primary rounded-sm rotate-45" />
           FORMATA
         </Link>
         
       </div>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-4">
         <Button
           type="button"
           variant="ghost"
@@ -55,19 +62,39 @@ export function Navbar() {
         >
           {theme === "dark" ? <Sun /> : <Moon />}
         </Button>
-        <Link href="/login" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-          Log in
-        </Link>
-        <Button size="sm" className="rounded-lg px-4">
-          <Link href="/ingest">
-            Get Started
+        <div className="hidden sm:flex items-center gap-3">
+          <Link href="/login" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            Log in
           </Link>
-        </Button>
-        <Button size="sm" className="rounded-lg px-4">
-          <Link href="/convert">
-            Convert
-          </Link>
-        </Button>
+          <Button size="sm" className="rounded-lg px-4" asChild>
+            <Link href="/ingest">Get Started</Link>
+          </Button>
+          <Button size="sm" className="rounded-lg px-4" asChild>
+            <Link href="/convert">Convert</Link>
+          </Button>
+        </div>
+
+        <div className="sm:hidden">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="ghost" size="icon" className="rounded-full" aria-label="Open menu">
+                <Menu />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-44">
+              <DropdownMenuItem asChild>
+                <Link href="/ingest">Get Started</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/convert">Convert</Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/login">Log in</Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </motion.header>
   )
