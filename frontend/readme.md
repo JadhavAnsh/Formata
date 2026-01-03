@@ -1,57 +1,74 @@
+# Next.js + shadcn Project Structure
+
+This project is a **data transformation tool** built on **Next.js (App Router)**, using the **shadcn/ui** components.
+---
+
+## Folder Layout
+
+```bash
 frontend/
-├── app/
-│   ├── layout.tsx              # Root layout
-│   ├── page.tsx                # Landing page
+│   ├── app/
+│   │   ├── layout.tsx              # Root layout
+│   │   ├── page.tsx                # Landing page
+│   │   │
+│   │   ├── ingest/
+│   │   │   └── page.tsx            # File upload/ingestion screen
+│   │   │
+│   │   ├── process/
+│   │   │   └── [jobId]/
+│   │   │       └── page.tsx        # Processing + progress
+│   │   │
+│   │   ├── result/
+│   │   │   └── [jobId]/
+│   │   │       └── page.tsx        # Clean output + errors
+│   │   │
+│   │   ├── convert/
+│   │   │   └── page.tsx            # CSV ↔ JSON conversion UI
+│   │   │
+│   │   └── globals.css             # Tailwind + global styles
 │   │
-│   ├── ingest/
-│   │   └── page.tsx            # File upload screen
+│   ├── components/
+│   │   ├── ui/                     # shadcn/ui generated components live here[3][4]
+│   │   │   ├── button.tsx
+│   │   │   ├── input.tsx
+│   │   │   └── ...others
+│   │   │
+│   │   ├── UploadBox.tsx           # Drag & drop file upload (uses ui components)
+│   │   ├── ProgressBar.tsx         # Real-time progress display
+│   │   ├── FilterForm.tsx          # Filters & parameters
+│   │   ├── NormalizationForm.tsx   # Type conversion options
+│   │   ├── ResultTable.tsx         # Before / After table
+│   │   ├── ErrorTable.tsx          # Validation errors
+│   │   ├── FileConverter.tsx       # CSV ↔ JSON conversion
+│   │   └── Navbar.tsx              # Top navigation
 │   │
-│   ├── process/
-│   │   └── [jobId]/
-│   │       └── page.tsx        # Processing + progress
+│   ├── services/
+│   │   ├── api.ts                  # Fetch/Axios wrapper
+│   │   ├── ingest.service.ts
+│   │   ├── process.service.ts
+│   │   ├── status.service.ts
+│   │   ├── result.service.ts
+│   │   └── convert.service.ts
 │   │
-│   ├── result/
-│   │   └── [jobId]/
-│   │       └── page.tsx        # Clean output + errors
+│   ├── hooks/
+│   │   ├── useUpload.ts            # Upload logic
+│   │   ├── useJobStatus.ts         # Poll job status
+│   │   └── useResult.ts            # Fetch results
 │   │
-│   └── convert/
-│       └── page.tsx            # CSV ↔ JSON conversion
-│
-├── components/
-│   ├── UploadBox.tsx           # Drag & drop file upload
-│   ├── ProgressBar.tsx         # Real-time progress
-│   ├── FilterForm.tsx          # Filters & parameters
-│   ├── NormalizationForm.tsx   # Type conversion options
-│   ├── ResultTable.tsx         # Before / After table
-│   ├── ErrorTable.tsx          # Validation errors
-│   ├── FileConverter.tsx       # Convert CSV ↔ JSON
-│   └── Navbar.tsx
-│
-├── services/
-│   ├── api.ts                  # Axios / fetch wrapper
-│   ├── ingest.service.ts
-│   ├── process.service.ts
-│   ├── status.service.ts
-│   ├── result.service.ts
-│   └── convert.service.ts
-│
-├── hooks/
-│   ├── useUpload.ts            # Upload logic
-│   ├── useJobStatus.ts         # Poll job status
-│   └── useResult.ts            # Fetch results
-│
-├── types/
-│   ├── job.ts
-│   ├── dataset.ts
-│   └── error.ts
-│
-├── styles/
-│   └── globals.css             # Tailwind / global styles
+│   ├── types/
+│   │   ├── job.ts                  # Job metadata and status
+│   │   ├── dataset.ts              # Dataset models
+│   │   └── error.ts                # Error/result schemas
+│   │
+│   └── lib/
+│       └── utils.ts                # Utility functions (cn helper, etc.)
 │
 ├── public/
-│   └── logo.svg
+│   ├── logo.svg
+│   └── ...                         # Static assets
 │
 ├── tailwind.config.ts
-├── next.config.js
+├── next.config.mjs
 ├── tsconfig.json
 └── package.json
+
