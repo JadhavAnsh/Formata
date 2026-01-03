@@ -26,9 +26,6 @@ class Settings(BaseSettings):
     # Processing
     max_file_size: int
     
-    # AI/ML
-    openrouter_api_key: str  # OpenRouter API key for profile analysis
-    
     # Optional: Database
     database_url: Optional[str] = None
     
