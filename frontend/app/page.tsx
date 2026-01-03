@@ -1,9 +1,5 @@
-import React from 'react'
+import { ComponentExample } from "@/components/component-example";
 
-const page = () => {
-  return (
-    <div>page</div>
-  )
+export default function Page() {
+return <ComponentExample />;
 }
-
-export default page
