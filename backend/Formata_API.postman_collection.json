@@ -1,0 +1,321 @@
+{
+  "info": {
+    "name": "Formata API",
+    "description": "Complete Postman collection for testing Formata API - Data processing platform with job management, file upload, and multi-step pipeline processing.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health & Status",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Check if API is running (no authentication required)"
+          },
+          "response": []
+        },
+        {
+          "name": "Base URL",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/",
+              "host": ["{{base_url}}"],
+              "path": [""]
+            },
+            "description": "API welcome message (no authentication required)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "File Upload",
+      "item": [
+        {
+          "name": "Upload CSV File",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "data.csv",
+                  "disabled": false
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/ingest",
+              "host": ["{{base_url}}"],
+              "path": ["ingest"]
+            },
+            "description": "Upload a CSV file and create a new job\n\nSupported formats: CSV, JSON, Excel (.xlsx/.xls), Markdown"
+          },
+          "response": []
+        },
+        {
+          "name": "Upload JSON File",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "data.json",
+                  "disabled": false
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/ingest",
+              "host": ["{{base_url}}"],
+              "path": ["ingest"]
+            },
+            "description": "Upload a JSON file and create a new job"
+          },
+          "response": []
+        },
+        {
+          "name": "Upload Excel File",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "data.xlsx",
+                  "disabled": false
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/ingest",
+              "host": ["{{base_url}}"],
+              "path": ["ingest"]
+            },
+            "description": "Upload an Excel file and create a new job"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Job Processing",
+      "item": [
+        {
+          "name": "Start Processing",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"normalize\": true,\n  \"remove_duplicates\": true,\n  \"remove_outliers\": false,\n  \"filters\": {}\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/process/{{job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["process", "{{job_id}}"]
+            },
+            "description": "Start background processing for an uploaded file\n\nConfiguration options:\n- normalize: boolean - Standardize columns and data types\n- remove_duplicates: boolean - Remove duplicate rows\n- remove_outliers: boolean - Remove statistical outliers (IQR method)\n- filters: object - Apply custom filters (optional)\n\nProcessing Pipeline (5 steps):\n1. Parse (20%) - Detect format and load file\n2. Normalize (40%) - Standardize columns and types\n3. Filter (60%) - Apply user-defined filters\n4. Denoise (80%) - Remove duplicates and outliers\n5. Validate (95%) - Check data quality"
+          },
+          "response": []
+        },
+        {
+          "name": "Check Processing Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/status/{{job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["status", "{{job_id}}"]
+            },
+            "description": "Get real-time status and progress of a job\n\nReturns:\n- status: pending | processing | completed | failed | cancelled\n- progress: 0.0 to 1.0\n- rows_before: Original row count\n- rows_after: Processed row count\n- errors: Array of error messages\n- metadata: Job metadata"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Results & Errors",
+      "item": [
+        {
+          "name": "Get Processed Results",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/result/{{job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["result", "{{job_id}}"]
+            },
+            "description": "Retrieve processed data from a completed job\n\nOnly available after status = 'completed'\n\nReturns:\n- processed_data: The cleaned and processed DataFrame\n- errors: Array of errors during processing\n- completed_at: ISO timestamp"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Error Report",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/errors/{{job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["errors", "{{job_id}}"]
+            },
+            "description": "Get detailed error report for a job\n\nReturns:\n- error_count: Total number of errors\n- errors: Array of error objects with type and message"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Job Management",
+      "item": [
+        {
+          "name": "List All Jobs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/jobs",
+              "host": ["{{base_url}}"],
+              "path": ["jobs"]
+            },
+            "description": "Get list of all jobs with their current status"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Job Status Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/jobs/status/summary",
+              "host": ["{{base_url}}"],
+              "path": ["jobs", "status", "summary"]
+            },
+            "description": "Get summary statistics of all jobs\n\nReturns:\n- total: Total number of jobs\n- pending: Jobs waiting to process\n- processing: Currently running jobs\n- completed: Successfully completed jobs\n- failed: Jobs that failed\n- cancelled: Cancelled jobs"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Job",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/jobs/{{job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["jobs", "{{job_id}}"]
+            },
+            "description": "Delete a job and its associated files\n\nRemoves:\n- Job record from store\n- Uploaded file\n- Output files\n- Error reports"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "your-secret-api-key",
+      "type": "string"
+    },
+    {
+      "key": "job_id",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}

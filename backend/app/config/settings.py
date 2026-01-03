@@ -5,26 +5,26 @@ from typing import Optional
 
 class Settings(BaseSettings):
     """
-    Application settings loaded from environment variables
+    Application settings loaded from environment variables (.env file)
     """
     # Application
-    app_name: str = "Formata"
-    debug: bool = False
+    app_name: str
+    debug: bool
     
     # API
-    api_host: str = "0.0.0.0"
-    api_port: int = 8000
+    api_host: str
+    api_port: int
     
     # Security
-    api_keys: str = "KuU2/uCTTP1IwvrDeNSquSPmT4w1LF53829uxCt4wDAA"  # Comma-separated list of valid API keys
+    api_keys: str  # Comma-separated list of valid API keys
     
     # Storage
-    upload_dir: str = "storage/uploads"
-    output_dir: str = "storage/outputs"
-    error_dir: str = "storage/errors"
+    upload_dir: str
+    output_dir: str
+    error_dir: str
     
     # Processing
-    max_file_size: int = 100 * 1024 * 1024  # 100MB
+    max_file_size: int
     
     # Optional: Database
     database_url: Optional[str] = None
@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     
     class Config:
         env_file = ".env"
+        env_file_encoding = "utf-8"
 
 
 # Global settings instance
