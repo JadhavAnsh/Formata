@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { ProcessingProgress } from '@/components/ProcessingProgress';
 import { ProgressBar } from '@/components/ProgressBar';
 import { useJobStatus } from '@/hooks/useJobStatus';
 import { processService } from '@/services/process.service';
@@ -19,6 +20,8 @@ export default function ProcessPage({ params }: ProcessPageProps) {
   const [jobId, setJobId] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterParams | null>(null);
   const [processingStarted, setProcessingStarted] = useState(false);
+  const [simulatedProgress, setSimulatedProgress] = useState(0);
+  const [simulatedStage, setSimulatedStage] = useState('Preparing pipeline');
 
   useEffect(() => {
     params.then((p) => setJobId(p.jobId));
@@ -37,9 +40,15 @@ export default function ProcessPage({ params }: ProcessPageProps) {
     }
   }, [searchParams]);
 
+  const shouldSimulate = useMemo(() => {
+    const value = searchParams.get('simulate');
+    return value === '1' || value === 'true';
+  }, [searchParams]);
+
   const { job, isLoading, error } = useJobStatus({
     jobId,
     pollInterval: 2000,
+    enabled: !shouldSimulate,
     onStatusChange: (job) => {
       if (job.status === 'completed') {
         router.push(`/result/${job.id}`);
@@ -51,6 +60,7 @@ export default function ProcessPage({ params }: ProcessPageProps) {
 
   // Start processing if job is pending and filters are available
   useEffect(() => {
+    if (shouldSimulate) return;
     if (jobId && job && job.status === 'pending' && filters && !processingStarted) {
       const startProcessing = async () => {
         try {
@@ -63,7 +73,45 @@ export default function ProcessPage({ params }: ProcessPageProps) {
       };
       startProcessing();
     }
-  }, [jobId, job, filters, processingStarted]);
+  }, [jobId, job, filters, processingStarted, shouldSimulate]);
+
+  useEffect(() => {
+    if (!jobId || !shouldSimulate) return;
+
+    let cancelled = false;
+    const startedAt = Date.now();
+    const durationMs = 6500;
+
+    const stageForProgress = (progress: number) => {
+      if (progress < 12) return 'Preparing pipeline';
+      if (progress < 32) return 'Loading input + schema';
+      if (progress < 58) return 'Cleaning + normalizing values';
+      if (progress < 82) return 'Validating records';
+      if (progress < 99) return 'Finalizing outputs';
+      return 'Done';
+    };
+
+    const tick = () => {
+      if (cancelled) return;
+      const elapsed = Date.now() - startedAt;
+      const nextProgress = Math.min(100, Math.round((elapsed / durationMs) * 100));
+      setSimulatedProgress(nextProgress);
+      setSimulatedStage(stageForProgress(nextProgress));
+
+      if (nextProgress >= 100) {
+        setTimeout(() => {
+          if (!cancelled) router.push(`/result/${jobId}?demo=1`);
+        }, 450);
+      }
+    };
+
+    tick();
+    const interval = window.setInterval(tick, 120);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [jobId, shouldSimulate, router]);
 
   if (!jobId) {
     return <div>Loading...</div>;
@@ -72,26 +120,28 @@ export default function ProcessPage({ params }: ProcessPageProps) {
   return (
     <div className="container mx-auto mt-16 sm:mt-20 px-4 sm:px-6 max-w-4xl">
       <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6">Processing Job</h1>
-      <p className="text-muted-foreground mb-4 sm:mb-6 break-all">Job ID: {jobId}</p>
+
+      {shouldSimulate ? (
+        <ProcessingProgress jobId={jobId} progress={simulatedProgress} stage={simulatedStage} />
+      ) : (
+        <>
+          <p className="text-muted-foreground mb-4 sm:mb-6 break-all">Job ID: {jobId}</p>
       
-      {job && (
-        <div className="space-y-4">
-          <ProgressBar
-            progress={job.progress || 0}
-            status={job.status}
-          />
-          <p className="text-sm text-muted-foreground">
-            Status: {job.status}
-          </p>
-        </div>
-      )}
+          {job && (
+            <div className="space-y-4">
+              <ProgressBar progress={job.progress || 0} status={job.status} />
+              <p className="text-sm text-muted-foreground">Status: {job.status}</p>
+            </div>
+          )}
       
-      {isLoading && <p className="text-sm text-muted-foreground">Loading...</p>}
+          {isLoading && <p className="text-sm text-muted-foreground">Loading...</p>}
       
-      {error && (
-        <div className="mt-4 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
-          {error.message}
-        </div>
+          {error && (
+            <div className="mt-4 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
+              {error.message}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
