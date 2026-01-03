@@ -7,7 +7,6 @@ import pandas as pd
 
 from app.services.parser import parse_csv, parse_json, parse_excel, parse_markdown
 from app.services.profiler import generate_profile_html, get_profile_summary
-from app.services.gemini_analyzer import analyze_profile_async
 from app.services.normalization import standardize_columns, normalize_types
 from app.services.filtering import apply_filters
 from app.services.noise import remove_duplicates, remove_outliers
