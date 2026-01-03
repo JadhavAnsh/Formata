@@ -68,8 +68,15 @@ export function Navbar() {
         <Link href="/login" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
           Log in
         </Link>
-        <Button size="sm" className="rounded-full px-5">
-          Get Started
+        <Button size="sm" className="rounded-lg px-4">
+          <Link href="/ingest">
+            Get Started
+          </Link>
+        </Button>
+        <Button size="sm" className="rounded-lg px-4">
+          <Link href="/convert">
+            Convert
+          </Link>
         </Button>
       </div>
     </motion.header>

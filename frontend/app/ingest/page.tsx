@@ -13,7 +13,7 @@ export default function IngestPage() {
   });
 
   return (
-    <div className="container mx-auto p-6 max-w-4xl flex flex-col items-center">
+    <div className="container mx-auto mt-20 p-6 max-w-4xl flex flex-col items-center">
       <h1 className="text-3xl font-bold italic mb-6">MESSY DATA TO STRUCTURED DATA</h1>
       <p className="text-center text-gray-500 mb-8 text-lg leading-relaxed">
         Upload raw data from CSV, Excel, or JSON and let Formata clean, normalize, and structure it automatically.
