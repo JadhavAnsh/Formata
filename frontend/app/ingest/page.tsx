@@ -13,10 +13,10 @@ export default function IngestPage() {
   });
 
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
-      <h1 className="text-3xl font-bold mb-6">File Upload</h1>
-      <p className="text-muted-foreground mb-6">
-        Upload your data file for processing
+    <div className="container mx-auto p-6 max-w-4xl flex flex-col items-center">
+      <h1 className="text-3xl font-bold italic mb-6">MESSY DATA TO STRUCTURED DATA</h1>
+      <p className="text-center text-gray-500 mb-8 text-lg leading-relaxed">
+        Upload raw data from CSV, Excel, or JSON and let Formata clean, normalize, and structure it automatically.
       </p>
       
       <UploadBox
@@ -26,14 +26,10 @@ export default function IngestPage() {
       />
       
       {isUploading && (
-        <p className="mt-4 text-sm text-muted-foreground">Uploading...</p>
+        <p className="mt-4 text-sm text-gray-500 center">Uploading...</p>
       )}
       
-      {error && (
-        <div className="mt-4 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
-          {error.message}
-        </div>
-      )}
+      {error && <p className="mt-4 text-sm text-red-500 center">{error.message}</p>}
     </div>
   );
 }

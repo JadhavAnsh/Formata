@@ -85,30 +85,25 @@ export function FileConverter({ onConvert }: FileConverterProps) {
   }, [downloadUrl, selectedFile, targetFormat]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <Label htmlFor="file-input">Select File</Label>
+    <div className="w-full max-w-2xl space-y-6 flex flex-col items-center">
+      <div className="w-full flex items-center gap-4">
+        <Label htmlFor="file-input" className="whitespace-nowrap">Select File:</Label>
         <Input
           id="file-input"
           type="file"
           accept=".csv,.json"
           onChange={handleFileChange}
-          className="mt-2"
+          className="flex-1"
         />
-        {selectedFile && (
-          <p className="mt-2 text-sm text-muted-foreground">
-            Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(2)} KB)
-          </p>
-        )}
       </div>
 
-      <div>
-        <Label htmlFor="target-format">Convert To</Label>
+      <div className="w-full flex items-center gap-4">
+        <Label htmlFor="target-format" className="whitespace-nowrap">Convert To:</Label>
         <Select
           value={targetFormat}
           onValueChange={(value) => setTargetFormat(value as 'csv' | 'json')}
         >
-          <SelectTrigger id="target-format" className="mt-2 w-full">
+          <SelectTrigger id="target-format" className="flex-1">
             <SelectValue placeholder="Select format" />
           </SelectTrigger>
           <SelectContent>
@@ -119,22 +114,27 @@ export function FileConverter({ onConvert }: FileConverterProps) {
       </div>
 
       {error && (
-        <div className="p-3 bg-destructive/10 text-destructive rounded-md text-sm">
+        <div className="p-3 bg-destructive/10 text-destructive rounded-md text-sm w-full text-center">
           {error}
         </div>
       )}
 
-      <div className="flex gap-4">
+      <div className="flex flex-col items-center gap-4 w-full">
         <Button
           onClick={handleConvert}
           disabled={!selectedFile || isConverting}
+          className="w-full max-w-xs"
         >
           {isConverting ? 'Converting...' : 'Convert'}
         </Button>
 
         {downloadUrl && (
-          <Button variant="outline" onClick={handleDownload}>
-            Download Converted File
+          <Button 
+            variant="outline" 
+            onClick={handleDownload}
+            className="w-full max-w-xs"
+          >
+            Download
           </Button>
         )}
       </div>
