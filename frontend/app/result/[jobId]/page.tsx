@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ResultTable } from '@/components/ResultTable';
 import { ErrorTable } from '@/components/ErrorTable';
 import { useResult } from '@/hooks/useResult';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Download, RotateCcw } from 'lucide-react';
+import { Download, FileText, RotateCcw } from 'lucide-react';
 import type { ProcessingResult } from '@/services/result.service';
 
 interface ResultPageProps {
@@ -35,6 +35,7 @@ function clampToPercent(value: number) {
 
 export default function ResultPage({ params }: ResultPageProps) {
   const [jobId, setJobId] = useState<string | null>(null);
+  const router = useRouter();
   const searchParams = useSearchParams();
   const isDemo = searchParams.get('demo') === '1';
 
@@ -162,10 +163,13 @@ export default function ResultPage({ params }: ResultPageProps) {
                 variant="outline"
                 className="w-full sm:w-auto sm:flex-1"
                 disabled={!result?.errors?.length}
-                onClick={() => downloadJson(`formata-errors-${jobId}.json`, result?.errors ?? [])}
+                onClick={() => {
+                  if (!jobId) return;
+                  router.push(`/error-report/${jobId}`);
+                }}
               >
-                <Download className="mr-2 size-4" />
-                Download Error Report
+                <FileText className="mr-2 size-4" />
+                View Error Report
               </Button>
             </div>
 
