@@ -1,0 +1,57 @@
+name: Deploy Backend to Azure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-deploy.yml"
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: formata-backend
+  DOCKERFILE: backend/Dockerfile
+  CONTEXT: backend
+  PORT: 8000
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: ACR login
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      - name: Build and push image
+        run: |
+          IMAGE=${{ secrets.ACR_NAME }}.azurecr.io/$IMAGE_NAME:${{ github.sha }}
+          docker build -f $DOCKERFILE -t $IMAGE $CONTEXT
+          docker push $IMAGE
+          echo "IMAGE_URI=$IMAGE" >> $GITHUB_ENV
+
+      - name: Update Web App container
+        run: |
+          az webapp config container set \
+            --name ${{ secrets.WEBAPP_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --docker-custom-image-name $IMAGE_URI \
+            --docker-registry-server-url https://${{ secrets.ACR_NAME }}.azurecr.io
+          az webapp config appsettings set \
+            --name ${{ secrets.WEBAPP_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --settings WEBSITES_PORT=$PORT
+          az webapp restart \
+            --name ${{ secrets.WEBAPP_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }}
