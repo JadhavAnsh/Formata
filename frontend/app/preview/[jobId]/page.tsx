@@ -6,6 +6,7 @@ import { PreviewTable } from '@/components/PreviewTable';
 import { FilterForm } from '@/components/FilterForm';
 import { Button } from '@/components/ui/button';
 import { previewService, type FilterParams } from '@/services/preview.service';
+import { applyFiltersClientSide } from '@/utils/fileParser';
 
 interface PreviewPageProps {
   params: Promise<{
@@ -25,6 +26,8 @@ export default function PreviewPage({ params }: PreviewPageProps) {
   const [isFiltering, setIsFiltering] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [appliedFilters, setAppliedFilters] = useState<FilterParams>({});
+  const [isUsingLocalData, setIsUsingLocalData] = useState(false);
+  const [originalData, setOriginalData] = useState<Array<Record<string, any>>>([]);
 
   useEffect(() => {
     params.then((p) => setJobId(p.jobId));
@@ -36,9 +39,60 @@ export default function PreviewPage({ params }: PreviewPageProps) {
     const loadPreviewData = async () => {
       setIsLoading(true);
       setError(null);
+      
+      // Check for local data first (temporary bypass)
+      if (jobId.startsWith('temp_')) {
+        try {
+          const storedData = localStorage.getItem(`preview_data_${jobId}`);
+          if (storedData) {
+            const fileData = JSON.parse(storedData);
+            const parsedData = fileData.parsedData;
+            
+            setData(parsedData.records || []);
+            setOriginalData(parsedData.records || []);
+            setRowCount(parsedData.records?.length || 0);
+            setTotalRows(parsedData.totalRows);
+            setColumns(parsedData.columns || []);
+            setIsUsingLocalData(true);
+            
+            // Detect column types
+            if (parsedData.records && parsedData.records.length > 0) {
+              const detectedTypes: Record<string, 'text' | 'numeric' | 'datetime' | 'boolean'> = {};
+              parsedData.columns.forEach((col: string) => {
+                const sampleValue = parsedData.records[0][col];
+                if (sampleValue === null || sampleValue === undefined) {
+                  detectedTypes[col] = 'text';
+                } else if (typeof sampleValue === 'boolean') {
+                  detectedTypes[col] = 'boolean';
+                } else if (typeof sampleValue === 'number') {
+                  detectedTypes[col] = 'numeric';
+                } else if (typeof sampleValue === 'string') {
+                  const dateValue = new Date(sampleValue);
+                  if (!isNaN(dateValue.getTime()) && sampleValue.length > 8) {
+                    detectedTypes[col] = 'datetime';
+                  } else {
+                    detectedTypes[col] = 'text';
+                  }
+                } else {
+                  detectedTypes[col] = 'text';
+                }
+              });
+              setColumnTypes(detectedTypes);
+            }
+            
+            setIsLoading(false);
+            return;
+          }
+        } catch (err) {
+          console.warn('Failed to load local data, falling back to API:', err);
+        }
+      }
+      
+      // Fall back to API
       try {
         const result = await previewService.getPreviewData(jobId);
         setData(result.records || []);
+        setOriginalData(result.records || []);
         setRowCount(result.records?.length || 0);
         
         if (result.metadata) {
@@ -71,6 +125,7 @@ export default function PreviewPage({ params }: PreviewPageProps) {
             setColumnTypes(detectedTypes);
           }
         }
+        setIsUsingLocalData(false);
       } catch (err) {
         setError(err instanceof Error ? err : new Error('Failed to load preview data'));
       } finally {
@@ -86,14 +141,24 @@ export default function PreviewPage({ params }: PreviewPageProps) {
 
     setIsFiltering(true);
     setError(null);
+    
     try {
-      const result = await previewService.applyFilters(jobId, filters as FilterParams);
-      setData(result.records || []);
-      setRowCount(result.records?.length || 0);
-      setAppliedFilters(filters as FilterParams);
-      
-      if (result.metadata) {
-        setTotalRows(result.metadata.totalRows);
+      if (isUsingLocalData) {
+        // Client-side filtering
+        const filtered = applyFiltersClientSide(originalData, filters);
+        setData(filtered);
+        setRowCount(filtered.length);
+        setAppliedFilters(filters as FilterParams);
+      } else {
+        // API filtering
+        const result = await previewService.applyFilters(jobId, filters as FilterParams);
+        setData(result.records || []);
+        setRowCount(result.records?.length || 0);
+        setAppliedFilters(filters as FilterParams);
+        
+        if (result.metadata) {
+          setTotalRows(result.metadata.totalRows);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to apply filters'));
@@ -107,14 +172,23 @@ export default function PreviewPage({ params }: PreviewPageProps) {
 
     setIsFiltering(true);
     setError(null);
+    
     try {
-      const result = await previewService.getPreviewData(jobId);
-      setData(result.records || []);
-      setRowCount(result.records?.length || 0);
-      setAppliedFilters({});
-      
-      if (result.metadata) {
-        setTotalRows(result.metadata.totalRows);
+      if (isUsingLocalData) {
+        // Reset to original data
+        setData(originalData);
+        setRowCount(originalData.length);
+        setAppliedFilters({});
+      } else {
+        // API reset
+        const result = await previewService.getPreviewData(jobId);
+        setData(result.records || []);
+        setRowCount(result.records?.length || 0);
+        setAppliedFilters({});
+        
+        if (result.metadata) {
+          setTotalRows(result.metadata.totalRows);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Failed to clear filters'));
@@ -150,6 +224,11 @@ export default function PreviewPage({ params }: PreviewPageProps) {
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold mb-2">Preview Data</h1>
             <p className="text-muted-foreground text-sm">Job ID: {jobId}</p>
+            {isUsingLocalData && (
+              <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
+                ⚠️ Using temporary client-side parsing (API not available)
+              </p>
+            )}
           </div>
           <Button onClick={handleContinueToProcess} size="lg">
             Continue to Process
