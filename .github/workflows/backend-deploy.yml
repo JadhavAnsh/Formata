@@ -32,11 +32,13 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: ACR login
-        run: az acr login --name ${{ secrets.ACR_NAME }}
+        run: |
+          LOGIN_SERVER=${{ secrets.ACR_LOGIN_SERVER }}
+          az acr login --name ${LOGIN_SERVER%.azurecr.io}
 
       - name: Build and push image
         run: |
-          IMAGE=${{ secrets.ACR_NAME }}.azurecr.io/$IMAGE_NAME:${{ github.sha }}
+          IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/$IMAGE_NAME:${{ github.sha }}
           docker build -f $DOCKERFILE -t $IMAGE $CONTEXT
           docker push $IMAGE
           echo "IMAGE_URI=$IMAGE" >> $GITHUB_ENV
@@ -47,7 +49,7 @@ jobs:
             --name ${{ secrets.WEBAPP_NAME }} \
             --resource-group ${{ secrets.RESOURCE_GROUP }} \
             --docker-custom-image-name $IMAGE_URI \
-            --docker-registry-server-url https://${{ secrets.ACR_NAME }}.azurecr.io
+            --docker-registry-server-url https://${{ secrets.ACR_LOGIN_SERVER }}
           az webapp config appsettings set \
             --name ${{ secrets.WEBAPP_NAME }} \
             --resource-group ${{ secrets.RESOURCE_GROUP }} \
