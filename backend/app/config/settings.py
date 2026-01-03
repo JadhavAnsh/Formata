@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     
+    # Security
+    api_keys: str = "KuU2/uCTTP1IwvrDeNSquSPmT4w1LF53829uxCt4wDAA"  # Comma-separated list of valid API keys
+    
     # Storage
     upload_dir: str = "storage/uploads"
     output_dir: str = "storage/outputs"
