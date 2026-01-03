@@ -200,6 +200,7 @@ export default function PreviewPage({ params }: PreviewPageProps) {
   const handleContinueToProcess = () => {
     // Pass filters via URL params or state
     const filterParams = new URLSearchParams();
+    filterParams.set('simulate', '1');
     if (Object.keys(appliedFilters).length > 0) {
       filterParams.set('filters', JSON.stringify(appliedFilters));
     }

@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { ResultTable } from '@/components/ResultTable';
 import { ErrorTable } from '@/components/ErrorTable';
 import { useResult } from '@/hooks/useResult';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Download, RotateCcw } from 'lucide-react';
+import type { ProcessingResult } from '@/services/result.service';
 
 interface ResultPageProps {
   params: Promise<{
@@ -33,12 +35,79 @@ function clampToPercent(value: number) {
 
 export default function ResultPage({ params }: ResultPageProps) {
   const [jobId, setJobId] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const isDemo = searchParams.get('demo') === '1';
 
   useEffect(() => {
     params.then((p) => setJobId(p.jobId));
   }, [params]);
 
-  const { result, isLoading, error } = useResult({ jobId });
+  const demoResult: ProcessingResult | null = useMemo(() => {
+    if (!jobId) return null;
+
+    const beforeRows = [
+      { id: '001', email: 'alice@example.com', age: '29', signup_date: '2024-10-01', active: 'true' },
+      { id: '002', email: 'bob@example.com', age: 'not_a_number', signup_date: '2024/11/03', active: 'yes' },
+      { id: '003', email: 'cara@example.com', age: '41', signup_date: '2024-12-09', active: 'false' },
+      { id: '004', email: 'dan@example.com', age: '34', signup_date: 'invalid_date', active: 'true' },
+    ];
+
+    const afterRows = [
+      { id: 1, email: 'alice@example.com', age: 29, signup_date: '2024-10-01', active: true },
+      { id: 2, email: 'bob@example.com', age: null, signup_date: '2024-11-03', active: true },
+      { id: 3, email: 'cara@example.com', age: 41, signup_date: '2024-12-09', active: false },
+      { id: 4, email: 'dan@example.com', age: 34, signup_date: null, active: true },
+    ];
+
+    return {
+      jobId,
+      beforeData: {
+        columns: [
+          { name: 'id', type: 'string' },
+          { name: 'email', type: 'string' },
+          { name: 'age', type: 'string' },
+          { name: 'signup_date', type: 'string' },
+          { name: 'active', type: 'string' },
+        ],
+        rows: beforeRows,
+        rowCount: beforeRows.length,
+        metadata: {
+          source: 'demo',
+          processedAt: new Date().toISOString(),
+          transformations: ['type-normalization', 'date-parsing', 'boolean-mapping', 'validation'],
+        },
+      },
+      afterData: {
+        columns: [
+          { name: 'id', type: 'number' },
+          { name: 'email', type: 'string' },
+          { name: 'age', type: 'number', nullable: true },
+          { name: 'signup_date', type: 'date', nullable: true },
+          { name: 'active', type: 'boolean' },
+        ],
+        rows: afterRows,
+        rowCount: afterRows.length,
+        metadata: {
+          source: 'demo',
+          processedAt: new Date().toISOString(),
+          transformations: ['type-normalization', 'date-parsing', 'boolean-mapping', 'validation'],
+        },
+      },
+      errors: [
+        { row: 2, column: 'age', message: 'Invalid number', value: 'not_a_number', code: 'INVALID_NUMBER', severity: 'error' },
+        { row: 4, column: 'signup_date', message: 'Invalid date', value: 'invalid_date', code: 'INVALID_DATE', severity: 'error' },
+      ],
+    };
+  }, [jobId]);
+
+  const { result: apiResult, isLoading: isApiLoading, error: apiError } = useResult({
+    jobId,
+    enabled: !isDemo,
+  });
+
+  const result = isDemo ? demoResult : apiResult;
+  const isLoading = isDemo ? false : isApiLoading;
+  const error = isDemo ? null : apiError;
 
   if (!jobId) {
     return <div>Loading...</div>;

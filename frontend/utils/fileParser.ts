@@ -31,7 +31,7 @@ export function parseCSV(content: string): ParsedData {
     if (values.length === header.length) {
       const record: Record<string, any> = {};
       header.forEach((col, idx) => {
-        let value = values[idx]?.trim().replace(/^"|"$/g, '') || '';
+        const value = values[idx]?.trim().replace(/^"|"$/g, '') || '';
         // Try to convert to number if possible
         const numValue = Number(value);
         if (value !== '' && !isNaN(numValue) && isFinite(numValue)) {
