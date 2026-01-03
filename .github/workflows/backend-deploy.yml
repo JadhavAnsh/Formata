@@ -34,7 +34,8 @@ jobs:
       - name: ACR login
         run: |
           LOGIN_SERVER=${{ secrets.ACR_LOGIN_SERVER }}
-          az acr login --name ${LOGIN_SERVER%.azurecr.io}
+          TOKEN=$(az acr login --name ${LOGIN_SERVER} --expose-token --output tsv --query accessToken)
+          docker login $LOGIN_SERVER -u 00000000-0000-0000-0000-000000000000 -p $TOKEN
 
       - name: Build and push image
         run: |
