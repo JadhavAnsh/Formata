@@ -139,7 +139,7 @@ class ProcessingPipeline:
             
             if config.get("remove_outliers", False):
                 before_outliers = len(df)
-                df = remove_outliers(df, method='iqr')
+                df = remove_outliers(df)
                 outliers_removed = before_outliers - len(df)
                 logger.info(f"Removed {outliers_removed} outlier rows")
             

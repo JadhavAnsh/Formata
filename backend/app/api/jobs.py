@@ -1,6 +1,8 @@
 # /jobs endpoints - Job management and listing
 from fastapi import APIRouter, HTTPException, status
 from typing import Dict, Any, List
+import os
+import glob
 
 from app.jobs.store import job_store, JobStatus
 from app.utils.logger import logger
@@ -62,6 +64,49 @@ async def delete_job(job_id: str) -> Dict[str, str]:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Job {job_id} not found"
             )
+        
+        # Gather file paths to delete (uploaded file, outputs, reports, errors)
+        job = job_store.get_job(job_id)
+        file_paths = set()
+        
+        # From job result/metadata if present
+        if job and job.result:
+            for path in [
+                job.result.get("output_path"),
+                job.result.get("reports", {}).get("error_report"),
+            ]:
+                if path:
+                    file_paths.add(path)
+        if job and job.metadata:
+            for path in [
+                job.metadata.get("clean_profile_path"),
+            ]:
+                if path:
+                    file_paths.add(path)
+        
+        # Common storage patterns
+        patterns = [
+            f"storage/uploads/{job_id}_*",            # uploaded files
+            f"storage/outputs/{job_id}.*",             # outputs
+            f"storage/errors/{job_id}_errors.*",       # error reports
+            f"storage/reports/{job_id}_*.*",          # profiles/reports
+        ]
+        for pattern in patterns:
+            for path in glob.glob(pattern):
+                file_paths.add(path)
+        
+        # Delete collected files
+        deleted_files = []
+        for path in file_paths:
+            try:
+                if os.path.isfile(path):
+                    os.remove(path)
+                    deleted_files.append(path)
+            except Exception as e:
+                logger.warning(f"Failed to delete file {path}: {e}")
+        
+        if deleted_files:
+            logger.info(f"Deleted files for job {job_id}: {deleted_files}")
         
         # Delete the job
         job_store.delete_job(job_id)

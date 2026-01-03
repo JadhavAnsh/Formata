@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "Formata API",
-    "description": "Complete Postman collection for testing Formata API - Data processing platform with job management, file upload, and multi-step pipeline processing.",
+    "name": "Formata API - Streamlined with Clean Data Profiling",
+    "description": "Complete Postman collection for testing Formata API with 9-step streamlined pipeline including ydata-profiling HTML reports on clean data.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -39,7 +39,7 @@
       ]
     },
     {
-      "name": "File Upload",
+      "name": "File Upload (Step 1)",
       "item": [
         {
           "name": "Upload CSV File",
@@ -68,7 +68,7 @@
               "host": ["{{base_url}}"],
               "path": ["ingest"]
             },
-            "description": "Upload a CSV file and create a new job\n\nSupported formats: CSV, JSON, Excel (.xlsx/.xls), Markdown"
+            "description": "Upload CSV file and create job\n\n**Step 1: Upload & Create Job**\n\nSupported formats: CSV, JSON, Excel (.xlsx/.xls), Markdown\n\n✅ Save the job_id from response to {{job_id}} variable for next requests"
           },
           "response": []
         },
@@ -99,7 +99,7 @@
               "host": ["{{base_url}}"],
               "path": ["ingest"]
             },
-            "description": "Upload a JSON file and create a new job"
+            "description": "Upload JSON file and create job"
           },
           "response": []
         },
@@ -130,14 +130,14 @@
               "host": ["{{base_url}}"],
               "path": ["ingest"]
             },
-            "description": "Upload an Excel file and create a new job"
+            "description": "Upload Excel file and create job"
           },
           "response": []
         }
       ]
     },
     {
-      "name": "Job Processing",
+      "name": "Job Processing (Steps 2-9)",
       "item": [
         {
           "name": "Start Processing",
@@ -157,14 +157,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"normalize\": true,\n  \"remove_duplicates\": true,\n  \"remove_outliers\": false,\n  \"filters\": {}\n}"
+              "raw": "{\n  \"normalize\": true,\n  \"remove_duplicates\": true,\n  \"remove_outliers\": false,\n  \"filters\": {},\n  \"output_format\": \"csv\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/process/{{job_id}}",
               "host": ["{{base_url}}"],
               "path": ["process", "{{job_id}}"]
             },
-            "description": "Start background processing for an uploaded file\n\nConfiguration options:\n- normalize: boolean - Standardize columns and data types\n- remove_duplicates: boolean - Remove duplicate rows\n- remove_outliers: boolean - Remove statistical outliers (IQR method)\n- filters: object - Apply custom filters (optional)\n\nProcessing Pipeline (5 steps):\n1. Parse (20%) - Detect format and load file\n2. Normalize (40%) - Standardize columns and types\n3. Filter (60%) - Apply user-defined filters\n4. Denoise (80%) - Remove duplicates and outliers\n5. Validate (95%) - Check data quality"
+            "description": "Start 9-step pipeline processing\n\n**Processing Steps:**\n- Step 2: Parse Data (20%)\n- Step 3: Normalize Data Types (25%)\n- Step 4: Apply Filters (40%)\n- Step 5: Remove Duplicates & Outliers (50%)\n- Step 6: Validate Results (65%)\n- Step 7: Profile Clean Data (ydata-profiling HTML) (80%)\n- Step 8: Convert/Vectorize (90%)\n- Step 9: Save Outputs + Reports (95-100%)\n\n**Configuration:**\n- normalize: boolean\n- remove_duplicates: boolean\n- remove_outliers: boolean\n- filters: object\n- output_format: \"csv\" or \"json\""
           },
           "response": []
         },
@@ -184,17 +184,17 @@
               "host": ["{{base_url}}"],
               "path": ["status", "{{job_id}}"]
             },
-            "description": "Get real-time status and progress of a job\n\nReturns:\n- status: pending | processing | completed | failed | cancelled\n- progress: 0.0 to 1.0\n- rows_before: Original row count\n- rows_after: Processed row count\n- errors: Array of error messages\n- metadata: Job metadata"
+            "description": "Get real-time status and progress (0.0-1.0)\n\nReturns:\n- status: pending | processing | completed | failed\n- progress: 0.0 to 1.0\n- rows_before: Original row count\n- rows_after: Processed row count\n- errors: Array of validation errors\n- metadata: Processing metadata"
           },
           "response": []
         }
       ]
     },
     {
-      "name": "Results & Errors",
+      "name": "Data Profiling (Step 7)",
       "item": [
         {
-          "name": "Get Processed Results",
+          "name": "Get Data Profile (HTML)",
           "request": {
             "method": "GET",
             "header": [
@@ -205,16 +205,41 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/result/{{job_id}}",
+              "raw": "{{base_url}}/profile/{{job_id}}",
               "host": ["{{base_url}}"],
-              "path": ["result", "{{job_id}}"]
+              "path": ["profile", "{{job_id}}"]
             },
-            "description": "Retrieve processed data from a completed job\n\nOnly available after status = 'completed'\n\nReturns:\n- processed_data: The cleaned and processed DataFrame\n- errors: Array of errors during processing\n- completed_at: ISO timestamp"
+            "description": "Get HTML profile report of CLEAN processed data\n\n**Step 7 Output:**\n- Generated after validation (on clean data)\n- Created by ydata-profiling\n- Returns comprehensive HTML report\n\n**Includes:**\n- Dataset Overview\n- Variable Statistics\n- Correlations\n- Missing Values Analysis\n- Sample Data\n- Duplicate Rows\n- Interactions\n\n**Status Codes:**\n- 200: Profile ready, returns HTML content\n- 202: Job still processing (with progress %)\n- 404: Job not found or profile not generated\n- 500: Job failed during processing"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Downloads (Steps 10-11)",
+      "item": [
+        {
+          "name": "Download Clean Data File",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/result/{{job_id}}/download",
+              "host": ["{{base_url}}"],
+              "path": ["result", "{{job_id}}", "download"]
+            },
+            "description": "Download processed/cleaned data file (only when status=completed)\n\nReturns downloadable file:\n- CSV or JSON format based on output_format config\n- Filename: {job_id}_clean.csv or {job_id}_clean.json\n- Content-Type: text/csv or application/json\n\n**Status Codes:**\n- 200: File ready, downloads file\n- 400: Job not completed yet\n- 404: Job not found or file missing"
           },
           "response": []
         },
         {
-          "name": "Get Error Report",
+          "name": "Download Error Report",
           "request": {
             "method": "GET",
             "header": [
@@ -225,11 +250,11 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/errors/{{job_id}}",
+              "raw": "{{base_url}}/errors/{{job_id}}/download",
               "host": ["{{base_url}}"],
-              "path": ["errors", "{{job_id}}"]
+              "path": ["errors", "{{job_id}}", "download"]
             },
-            "description": "Get detailed error report for a job\n\nReturns:\n- error_count: Total number of errors\n- errors: Array of error objects with type and message"
+            "description": "Download error report file (only if job has errors)\n\nReturns downloadable text file:\n- Filename: {job_id}_errors.txt\n- Content-Type: text/plain\n- Contains all processing errors\n\n**Status Codes:**\n- 200: Error report ready, downloads file\n- 404: Job not found or no errors to report"
           },
           "response": []
         }
@@ -254,7 +279,7 @@
               "host": ["{{base_url}}"],
               "path": ["jobs"]
             },
-            "description": "Get list of all jobs with their current status"
+            "description": "Get all jobs with current status"
           },
           "response": []
         },
@@ -274,7 +299,7 @@
               "host": ["{{base_url}}"],
               "path": ["jobs", "status", "summary"]
             },
-            "description": "Get summary statistics of all jobs\n\nReturns:\n- total: Total number of jobs\n- pending: Jobs waiting to process\n- processing: Currently running jobs\n- completed: Successfully completed jobs\n- failed: Jobs that failed\n- cancelled: Cancelled jobs"
+            "description": "Get job statistics summary\n\nReturns:\n- total: Total jobs\n- pending: Waiting jobs\n- processing: Active jobs\n- completed: Successful jobs\n- failed: Failed jobs\n- cancelled: Cancelled jobs"
           },
           "response": []
         },
@@ -294,7 +319,7 @@
               "host": ["{{base_url}}"],
               "path": ["jobs", "{{job_id}}"]
             },
-            "description": "Delete a job and its associated files\n\nRemoves:\n- Job record from store\n- Uploaded file\n- Output files\n- Error reports"
+            "description": "Delete job and all associated files"
           },
           "response": []
         }

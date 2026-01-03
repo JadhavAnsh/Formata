@@ -3,12 +3,8 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from app.guards.auth import verify_api_key
 
-# For mounting Dash
-from fastapi.staticfiles import StaticFiles
-import dash
-from dash import Dash
-from dash import html, dcc
-import plotly.express as px
+
+
 
 app = FastAPI(title="Formata API", version="1.0.0")
 
@@ -37,11 +33,11 @@ def health_check():
 
 
 # Register protected routes with API key guard
-app.include_router(ingest.router, dependencies=[Depends(verify_api_key)])
-app.include_router(process.router, dependencies=[Depends(verify_api_key)])
-app.include_router(status.router, dependencies=[Depends(verify_api_key)])
-app.include_router(result.router, dependencies=[Depends(verify_api_key)])
-app.include_router(errors.router, dependencies=[Depends(verify_api_key)])
-app.include_router(convert.router, dependencies=[Depends(verify_api_key)])
-app.include_router(jobs.router, dependencies=[Depends(verify_api_key)])
-app.include_router(profile.router, dependencies=[Depends(verify_api_key)])
+app.include_router(ingest, dependencies=[Depends(verify_api_key)])
+app.include_router(process, dependencies=[Depends(verify_api_key)])
+app.include_router(status, dependencies=[Depends(verify_api_key)])
+app.include_router(result, dependencies=[Depends(verify_api_key)])
+app.include_router(errors, dependencies=[Depends(verify_api_key)])
+app.include_router(convert, dependencies=[Depends(verify_api_key)])
+app.include_router(jobs, dependencies=[Depends(verify_api_key)])
+app.include_router(profile, dependencies=[Depends(verify_api_key)])

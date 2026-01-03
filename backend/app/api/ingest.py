@@ -12,7 +12,7 @@ from app.utils.logger import logger
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 
-@router.post("/", response_model=JobResponse)
+@router.post("", response_model=JobResponse)
 async def ingest_data(file: UploadFile = File(...)):
     """
     STEP 1: User Uploads File

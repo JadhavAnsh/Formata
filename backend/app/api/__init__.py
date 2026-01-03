@@ -6,4 +6,4 @@ from .jobs import router as jobs
 from .ingest import router as ingest
 from .errors import router as errors
 from .convert import router as convert
-from .dashboard import router as dashboard
+from .profile import router as profile
