@@ -3,6 +3,13 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from app.guards.auth import verify_api_key
 
+# For mounting Dash
+from fastapi.staticfiles import StaticFiles
+import dash
+from dash import Dash
+from dash import html, dcc
+import plotly.express as px
+
 app = FastAPI(title="Formata API", version="1.0.0")
 
 # CORS middleware

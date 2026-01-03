@@ -13,6 +13,7 @@ def parse_csv(file_path: str) -> pd.DataFrame:
     try:
         df = pd.read_csv(
             file_path,
+            dtype=str,                    # read everything as text first
             encoding="utf-8",
             encoding_errors="replace",
             on_bad_lines="skip"
@@ -20,6 +21,11 @@ def parse_csv(file_path: str) -> pd.DataFrame:
 
         # Drop completely empty rows
         df.dropna(how="all", inplace=True)
+
+        # Trim whitespace from all cells
+        df = df.applymap(
+            lambda x: x.strip() if isinstance(x, str) else x
+        )
 
         return df.reset_index(drop=True)
 
@@ -34,18 +40,24 @@ def parse_json(file_path: str) -> Dict[str, Any]:
 
     try:
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-            data = json.load(f)
+            raw = f.read().strip()
 
-        # Normalize to list-of-records format when possible
+        if not raw:
+            return {"records": []}
+
+        data = json.loads(raw)
+
+        # Case 1: list of records
         if isinstance(data, list):
             return {"records": data}
 
+        # Case 2: dict wrapper
         if isinstance(data, dict):
-            # Common pattern: wrapped records
-            for key in ["data", "records", "items", "results"]:
+            for key in ["records", "data", "items", "results", "rows"]:
                 if key in data and isinstance(data[key], list):
                     return {"records": data[key]}
 
+            # Single object → wrap as record
             return {"records": [data]}
 
         raise ValueError("Unsupported JSON structure")
@@ -60,13 +72,26 @@ def parse_excel(file_path: str) -> pd.DataFrame:
         raise FileNotFoundError(f"Excel file not found: {file_path}")
 
     try:
-        sheets = pd.read_excel(file_path, sheet_name=None)
+        sheets = pd.read_excel(
+            file_path,
+            sheet_name=None,
+            dtype=str
+        )
 
         frames = []
+
         for _, df in sheets.items():
-            if df is not None and not df.empty:
-                df.dropna(how="all", inplace=True)
-                frames.append(df)
+            if df is None or df.empty:
+                continue
+
+            df.dropna(how="all", inplace=True)
+
+            # Trim whitespace
+            df = df.applymap(
+                lambda x: x.strip() if isinstance(x, str) else x
+            )
+
+            frames.append(df)
 
         if not frames:
             return pd.DataFrame()
@@ -85,6 +110,10 @@ def parse_markdown(file_path: str) -> str:
     try:
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
+
+        # Normalize whitespace
+        content = re.sub(r"\r\n", "\n", content)
+        content = re.sub(r"\n{3,}", "\n\n", content)
 
         return content.strip()
 

@@ -1,4 +1,5 @@
 # CSV ↔ JSON conversion
+
 import pandas as pd
 from typing import Dict, Any
 import os
@@ -8,42 +9,63 @@ def csv_to_json(csv_path: str) -> Dict[str, Any]:
     """
     Convert CSV to JSON (worst-case raw data safe)
     """
-    if not os.path.exists(csv_path):
+    if not os.path.isfile(csv_path):
         raise FileNotFoundError(f"CSV file not found: {csv_path}")
 
     try:
-        # Read CSV safely (handles bad encoding, broken rows)
+        # Read everything as string first (max safety)
         df = pd.read_csv(
             csv_path,
+            dtype=str,
             encoding="utf-8",
             encoding_errors="replace",
             on_bad_lines="skip"
         )
 
-        # Drop completely empty rows
+        # Drop fully empty rows
         df.dropna(how="all", inplace=True)
 
         # Normalize column names
         df.columns = (
-            df.columns
-            .astype(str)
+            df.columns.astype(str)
             .str.strip()
             .str.lower()
-            .str.replace(" ", "_")
+            .str.replace(r"[^\w]+", "_", regex=True)
+            .str.strip("_")
         )
 
-        # Attempt type normalization (best-effort)
+        # Normalize cell values + best-effort typing
         for col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="ignore")
+            df[col] = (
+                df[col]
+                .astype(str)
+                .str.strip()
+                .replace(
+                    {
+                        "": None,
+                        "none": None,
+                        "null": None,
+                        "nan": None,
+                        "na": None,
+                        "n/a": None,
+                        "undefined": None
+                    }
+                )
+            )
 
-        # Replace NaN with None (JSON-safe)
-        df = df.where(pd.notnull(df), None)
+            # Try numeric conversion safely
+            numeric_series = pd.to_numeric(df[col], errors="coerce")
+            if numeric_series.notna().sum() > 0:
+                df[col] = numeric_series.where(numeric_series.notna(), df[col])
+
+        # JSON-safe conversion
+        records = df.where(pd.notnull(df), None).to_dict(orient="records")
 
         return {
-            "records": df.to_dict(orient="records"),
+            "records": records,
             "meta": {
                 "source": "csv",
-                "rows": int(len(df)),
+                "rows": len(records),
                 "columns": list(df.columns)
             }
         }
@@ -61,23 +83,40 @@ def json_to_csv(json_data: Dict[str, Any], output_path: str) -> None:
 
     try:
         # Extract records safely
-        if isinstance(json_data, dict) and "records" in json_data:
-            records = json_data["records"]
+        if isinstance(json_data, dict):
+            records = json_data.get("records", [])
         elif isinstance(json_data, list):
             records = json_data
         else:
-            raise ValueError("Invalid JSON format")
+            raise ValueError("Invalid JSON structure")
 
         if not records:
-            raise ValueError("No records to write")
+            raise ValueError("No records available for CSV conversion")
 
-        # Normalize / flatten nested JSON
-        df = pd.json_normalize(records, sep="_")
+        # Flatten nested JSON
+        df = pd.json_normalize(records, sep="_", max_level=10)
 
-        # Ensure directory exists
+        # Normalize column names
+        df.columns = (
+            df.columns.astype(str)
+            .str.strip()
+            .str.lower()
+            .str.replace(r"[^\w]+", "_", regex=True)
+            .str.strip("_")
+        )
+
+        # Normalize cell values
+        df = df.applymap(
+            lambda x: None
+            if str(x).strip().lower()
+            in {"", "none", "null", "nan", "na", "n/a", "undefined"}
+            else x
+        )
+
+        # Ensure output directory exists
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-        # Write CSV (overwrite old file safely)
+        # Write CSV
         df.to_csv(output_path, index=False)
 
     except Exception as e:
