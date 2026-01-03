@@ -42,17 +42,7 @@ export function Navbar() {
           <div className="w-6 h-6 bg-primary rounded-sm rotate-45" />
           FORMATA
         </Link>
-        <nav className="hidden md:flex items-center gap-6">
-          {["Product", "Enterprise", "Pricing", "Docs"].map((item) => (
-            <Link
-              key={item}
-              href={`#${item.toLowerCase()}`}
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {item}
-            </Link>
-          ))}
-        </nav>
+        
       </div>
       <div className="flex items-center gap-4">
         <Button
@@ -68,8 +58,15 @@ export function Navbar() {
         <Link href="/login" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
           Log in
         </Link>
-        <Button size="sm" className="rounded-full px-5">
-          Get Started
+        <Button size="sm" className="rounded-lg px-4">
+          <Link href="/ingest">
+            Get Started
+          </Link>
+        </Button>
+        <Button size="sm" className="rounded-lg px-4">
+          <Link href="/convert">
+            Convert
+          </Link>
         </Button>
       </div>
     </motion.header>
