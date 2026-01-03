@@ -33,12 +33,12 @@ export function PreviewTable({ data, isLoading, rowCount, totalRows }: PreviewTa
           Showing {rowCount ?? data.length} {totalRows !== undefined && totalRows !== rowCount && `of ${totalRows}`} rows
         </div>
       )}
-      <div className="overflow-x-auto border rounded-lg">
+      <div className="themed-scrollbar border rounded-lg h-[70vh] overflow-y-auto overflow-x-auto">
         <table className="w-full border-collapse">
-          <thead className="bg-muted">
+          <thead className="bg-muted sticky top-0 z-10">
             <tr>
               {columns.map((col) => (
-                <th key={col} className="border p-3 text-left font-semibold text-sm">
+                <th key={col} className="border p-3 text-left font-semibold text-sm whitespace-nowrap">
                   {col}
                 </th>
               ))}
@@ -48,7 +48,7 @@ export function PreviewTable({ data, isLoading, rowCount, totalRows }: PreviewTa
             {data.map((row, idx) => (
               <tr key={idx} className="hover:bg-muted/50 transition-colors">
                 {columns.map((col) => (
-                  <td key={col} className="border p-3 text-sm">
+                  <td key={col} className="border p-3 text-sm whitespace-nowrap">
                     {String(row[col] ?? '')}
                   </td>
                 ))}
