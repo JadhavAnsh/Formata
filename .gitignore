@@ -1,2 +1,5 @@
 .env
 .idea
+testing.ipynb
+backend/app/services/data
+__pycache__
