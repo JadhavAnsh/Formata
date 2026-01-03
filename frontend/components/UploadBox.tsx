@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Upload } from 'lucide-react';
@@ -11,6 +11,7 @@ interface UploadBoxProps {
 
 export function UploadBox({ onFileSelect }: UploadBoxProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -43,6 +44,10 @@ export function UploadBox({ onFileSelect }: UploadBoxProps) {
     setIsDragging(false);
   }, []);
 
+  const handleButtonClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
   return (
     <div className="w-full max-w-3xl">
       <div className="rounded-xl bg-card p-4 sm:p-6">
@@ -72,18 +77,22 @@ export function UploadBox({ onFileSelect }: UploadBoxProps) {
               </p>
             </div>
             
-            <input
+            <Input
+              ref={fileInputRef}
               type="file"
               onChange={handleFileChange}
               className="hidden"
               id="file-upload"
               accept=".csv,.json,.xlsx,.xls"
             />
-            <label htmlFor="file-upload">
-              <Button variant="outline" className="cursor-pointer">
-                Select File
-              </Button>
-            </label>
+            <Button 
+              variant="outline" 
+              type="button"
+              onClick={handleButtonClick}
+              className="cursor-pointer"
+            >
+              Select File
+            </Button>
           </div>
         </div>
       </div>

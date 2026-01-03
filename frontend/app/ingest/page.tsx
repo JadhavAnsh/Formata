@@ -8,7 +8,7 @@ export default function IngestPage() {
   const router = useRouter();
   const { upload, isUploading, error } = useUpload({
     onSuccess: (job) => {
-      router.push(`/process/${job.id}`);
+      router.push(`/preview/${job.id}`);
     },
   });
 

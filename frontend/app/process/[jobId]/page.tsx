@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ProgressBar } from '@/components/ProgressBar';
 import { useJobStatus } from '@/hooks/useJobStatus';
+import { processService } from '@/services/process.service';
+import type { FilterParams } from '@/services/preview.service';
 
 interface ProcessPageProps {
   params: Promise<{
@@ -13,11 +15,27 @@ interface ProcessPageProps {
 
 export default function ProcessPage({ params }: ProcessPageProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [jobId, setJobId] = useState<string | null>(null);
+  const [filters, setFilters] = useState<FilterParams | null>(null);
+  const [processingStarted, setProcessingStarted] = useState(false);
 
   useEffect(() => {
     params.then((p) => setJobId(p.jobId));
   }, [params]);
+
+  useEffect(() => {
+    // Extract filters from URL params
+    const filtersParam = searchParams.get('filters');
+    if (filtersParam) {
+      try {
+        const parsedFilters = JSON.parse(filtersParam);
+        setFilters(parsedFilters);
+      } catch (e) {
+        console.error('Failed to parse filters from URL:', e);
+      }
+    }
+  }, [searchParams]);
 
   const { job, isLoading, error } = useJobStatus({
     jobId,
@@ -30,6 +48,22 @@ export default function ProcessPage({ params }: ProcessPageProps) {
       }
     },
   });
+
+  // Start processing if job is pending and filters are available
+  useEffect(() => {
+    if (jobId && job && job.status === 'pending' && filters && !processingStarted) {
+      const startProcessing = async () => {
+        try {
+          setProcessingStarted(true);
+          await processService.startProcessing(jobId, { filters });
+        } catch (err) {
+          console.error('Failed to start processing:', err);
+          setProcessingStarted(false);
+        }
+      };
+      startProcessing();
+    }
+  }, [jobId, job, filters, processingStarted]);
 
   if (!jobId) {
     return <div>Loading...</div>;

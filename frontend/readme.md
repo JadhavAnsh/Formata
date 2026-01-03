@@ -71,4 +71,29 @@ frontend/
 ├── next.config.mjs
 ├── tsconfig.json
 └── package.json
+```
 
+sequenceDiagram
+    participant User
+    participant IngestPage
+    participant PreviewPage
+    participant PreviewAPI
+    participant ProcessPage
+    participant ProcessAPI
+
+    User->>IngestPage: Upload file
+    IngestPage->>PreviewAPI: POST /ingest
+    PreviewAPI-->>IngestPage: job_id
+    IngestPage->>PreviewPage: Navigate to /preview/{job_id}
+    PreviewPage->>PreviewAPI: GET /preview/{job_id}
+    PreviewAPI->>PreviewAPI: Convert JSON to CSV if needed
+    PreviewAPI-->>PreviewPage: CSV data (JSON format)
+    PreviewPage->>PreviewPage: Display table
+    User->>PreviewPage: Apply filters
+    PreviewPage->>PreviewAPI: POST /preview/{job_id}/filter
+    PreviewAPI->>PreviewAPI: Apply filters using filtering.py
+    PreviewAPI-->>PreviewPage: Filtered data
+    PreviewPage->>PreviewPage: Update table
+    User->>PreviewPage: Click "Continue to Process"
+    PreviewPage->>ProcessPage: Navigate with filters
+    ProcessPage->>ProcessAPI: POST /process/{job_id} with filters
