@@ -6,19 +6,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 
 interface ErrorReportPageProps {
-  params: Promise<{
+  params: {
     job_id: string;
-  }>;
+  };
 }
 
 export default function ErrorReportPage({ params }: ErrorReportPageProps) {
-  const [jobId, setJobId] = useState<string | null>(null);
+  const jobId = params.job_id;
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [isIframeLoading, setIsIframeLoading] = useState(true);
-
-  useEffect(() => {
-    params.then((p) => setJobId(p.job_id));
-  }, [params]);
 
   useEffect(() => {
     const applyTheme = () => {
