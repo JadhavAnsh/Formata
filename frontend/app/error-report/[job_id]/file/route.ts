@@ -5,33 +5,73 @@ import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
-function injectThemeAssets(html: string) {
+function setRootTheme(html: string, theme: 'light' | 'dark') {
+  const htmlTagMatch = html.match(/<html\b[^>]*>/i);
+  if (!htmlTagMatch) return html;
+
+  const originalTag = htmlTagMatch[0];
+  let nextTag = originalTag;
+
+  if (/data-theme\s*=\s*["'][^"']*["']/i.test(nextTag)) {
+    nextTag = nextTag.replace(/data-theme\s*=\s*["'][^"']*["']/i, `data-theme="${theme}"`);
+  } else {
+    nextTag = nextTag.replace(/<html\b/i, `<html data-theme="${theme}"`);
+  }
+
+  const styleAttrMatch = nextTag.match(/style\s*=\s*["']([^"']*)["']/i);
+  const colorSchemeDecl = `color-scheme: ${theme};`;
+  if (styleAttrMatch) {
+    const existingStyle = styleAttrMatch[1] ?? '';
+    const cleanedStyle = existingStyle.replace(/color-scheme\s*:\s*(light|dark)\s*;?/gi, '').trim();
+    const mergedStyle = `${cleanedStyle}${cleanedStyle ? '; ' : ''}${colorSchemeDecl}`.trim();
+    nextTag = nextTag.replace(styleAttrMatch[0], `style="${mergedStyle}"`);
+  } else {
+    nextTag = nextTag.replace(/>$/, ` style="${colorSchemeDecl}">`);
+  }
+
+  return html.replace(originalTag, nextTag);
+}
+
+function injectThemeAssets(html: string, theme?: 'light' | 'dark') {
   const marker = 'data-formata-theme-assets="1"';
   if (html.includes(marker)) return html;
 
-  const injection = `<link ${marker} rel="stylesheet" href="/ydata-profile-theme.css"><script ${marker}>(function(){function a(){try{var e=window.parent&&window.parent.document&&window.parent.document.documentElement;if(!e)return!1;var t=e.classList&&e.classList.contains('dark');document.documentElement.dataset.theme=t?'dark':'light';try{var r=new MutationObserver(function(){a()});r.observe(e,{attributes:!0,attributeFilter:['class']})}catch(n){}return!0}catch(n){return!1}}function i(){try{var e=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)');document.documentElement.dataset.theme=e&&e.matches?'dark':'light';if(e&&e.addEventListener)e.addEventListener('change',i)}catch(t){}}if(!a())i()})();</script>`;
+  const headInjection = [
+    `<meta ${marker} name="color-scheme" content="light dark">`,
+    `<link ${marker} rel="stylesheet" href="/ydata-profile-theme-v2.css">`,
+  ].join('');
 
-  const styleCloseIndex = html.toLowerCase().indexOf('</style>');
-  if (styleCloseIndex !== -1) {
-    const insertAt = styleCloseIndex + '</style>'.length;
-    return `${html.slice(0, insertAt)}${injection}${html.slice(insertAt)}`;
+  const themeInjection =
+    theme === 'dark' || theme === 'light'
+      ? ''
+      : `<script ${marker}>(function(){try{var e=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)');document.documentElement.dataset.theme=e&&e.matches?'dark':'light';if(e&&e.addEventListener)e.addEventListener('change',function(){document.documentElement.dataset.theme=e.matches?'dark':'light'})}catch(t){}})();</script>`;
+
+  const themedHtml = theme ? setRootTheme(html, theme) : html;
+
+  const headOpenMatch = themedHtml.match(/<head\b[^>]*>/i);
+  if (headOpenMatch) {
+    const insertAt = (headOpenMatch.index ?? 0) + headOpenMatch[0].length;
+    return `${themedHtml.slice(0, insertAt)}${headInjection}${themeInjection}${themedHtml.slice(insertAt)}`;
   }
 
-  const bodyIndex = html.toLowerCase().indexOf('<body');
+  const bodyIndex = themedHtml.toLowerCase().indexOf('<body');
   if (bodyIndex !== -1) {
-    return `${html.slice(0, bodyIndex)}${injection}${html.slice(bodyIndex)}`;
+    return `${themedHtml.slice(0, bodyIndex)}${headInjection}${themeInjection}${themedHtml.slice(bodyIndex)}`;
   }
 
-  return `${injection}${html}`;
+  return `${headInjection}${themeInjection}${themedHtml}`;
 }
 
-export async function GET(_request: Request, { params }: { params: { jobId: string } }) {
-  const filePath = path.join(process.cwd(), `${params.jobId}_clean_profile.html`);
+export async function GET(request: Request, { params }: { params: { job_id: string } }) {
+  const url = new URL(request.url);
+  const theme = url.searchParams.get('theme') === 'dark' ? 'dark' : url.searchParams.get('theme') === 'light' ? 'light' : undefined;
+
+  const filePath = path.join(process.cwd(), `${params.job_id}_clean_profile.html`);
   const fallbackPath = path.join(process.cwd(), 'cf61c556-961f-484d-9110-d25b651ecf67_clean_profile.html');
 
   try {
     const html = await readFile(filePath, 'utf8');
-    return new NextResponse(injectThemeAssets(html), {
+    return new NextResponse(injectThemeAssets(html, theme), {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-store',
@@ -40,7 +80,7 @@ export async function GET(_request: Request, { params }: { params: { jobId: stri
   } catch {
     try {
       const html = await readFile(fallbackPath, 'utf8');
-      return new NextResponse(injectThemeAssets(html), {
+      return new NextResponse(injectThemeAssets(html, theme), {
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'no-store',

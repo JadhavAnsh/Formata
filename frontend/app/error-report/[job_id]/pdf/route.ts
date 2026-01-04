@@ -25,26 +25,31 @@ function injectCss(html: string, css: string) {
   return `${injection}${html}`;
 }
 
-function injectTheme(html: string, theme: 'light' | 'dark') {
-  const marker = 'data-formata-pdf-theme="1"';
-  if (html.includes(marker)) return html;
+function setRootTheme(html: string, theme: 'light' | 'dark') {
+  const htmlTagMatch = html.match(/<html\b[^>]*>/i);
+  if (!htmlTagMatch) return html;
 
-  const script = `<script ${marker}>(function(){document.documentElement.dataset.theme=${JSON.stringify(
-    theme,
-  )}})();</script>`;
+  const originalTag = htmlTagMatch[0];
+  let nextTag = originalTag;
 
-  const styleCloseIndex = html.toLowerCase().indexOf('</style>');
-  if (styleCloseIndex !== -1) {
-    const insertAt = styleCloseIndex + '</style>'.length;
-    return `${html.slice(0, insertAt)}${script}${html.slice(insertAt)}`;
+  if (/data-theme\s*=\s*["'][^"']*["']/i.test(nextTag)) {
+    nextTag = nextTag.replace(/data-theme\s*=\s*["'][^"']*["']/i, `data-theme="${theme}"`);
+  } else {
+    nextTag = nextTag.replace(/<html\b/i, `<html data-theme="${theme}"`);
   }
 
-  const bodyIndex = html.toLowerCase().indexOf('<body');
-  if (bodyIndex !== -1) {
-    return `${html.slice(0, bodyIndex)}${script}${html.slice(bodyIndex)}`;
+  const styleAttrMatch = nextTag.match(/style\s*=\s*["']([^"']*)["']/i);
+  const colorSchemeDecl = `color-scheme: ${theme};`;
+  if (styleAttrMatch) {
+    const existingStyle = styleAttrMatch[1] ?? '';
+    const cleanedStyle = existingStyle.replace(/color-scheme\s*:\s*(light|dark)\s*;?/gi, '').trim();
+    const mergedStyle = `${cleanedStyle}${cleanedStyle ? '; ' : ''}${colorSchemeDecl}`.trim();
+    nextTag = nextTag.replace(styleAttrMatch[0], `style="${mergedStyle}"`);
+  } else {
+    nextTag = nextTag.replace(/>$/, ` style="${colorSchemeDecl}">`);
   }
 
-  return `${script}${html}`;
+  return html.replace(originalTag, nextTag);
 }
 
 async function renderPdfFromHtml(html: string, theme: 'light' | 'dark') {
@@ -73,13 +78,13 @@ async function renderPdfFromHtml(html: string, theme: 'light' | 'dark') {
   }
 }
 
-export async function GET(request: Request, { params }: { params: { jobId: string } }) {
+export async function GET(request: Request, { params }: { params: { job_id: string } }) {
   const url = new URL(request.url);
   const theme = url.searchParams.get('theme') === 'dark' ? 'dark' : 'light';
 
-  const reportPath = path.join(process.cwd(), `${params.jobId}_clean_profile.html`);
+  const reportPath = path.join(process.cwd(), `${params.job_id}_clean_profile.html`);
   const fallbackPath = path.join(process.cwd(), 'cf61c556-961f-484d-9110-d25b651ecf67_clean_profile.html');
-  const cssPath = path.join(process.cwd(), 'public', 'ydata-profile-theme.css');
+  const cssPath = path.join(process.cwd(), 'public', 'ydata-profile-theme-v2.css');
 
   const css = await readFile(cssPath, 'utf8');
 
@@ -91,14 +96,14 @@ export async function GET(request: Request, { params }: { params: { jobId: strin
   }
 
   html = injectCss(html, css);
-  html = injectTheme(html, theme);
+  html = setRootTheme(html, theme);
 
   const pdf = await renderPdfFromHtml(html, theme);
 
   return new NextResponse(pdf, {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="formata-error-report-${params.jobId}.pdf"`,
+      'Content-Disposition': `attachment; filename="formata-error-report-${params.job_id}.pdf"`,
       'Cache-Control': 'no-store',
     },
   });

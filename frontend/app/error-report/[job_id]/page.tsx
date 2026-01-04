@@ -1,10 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { resultService } from '@/services/result.service';
 
 interface ErrorReportPageProps {
   params: Promise<{
@@ -14,35 +13,34 @@ interface ErrorReportPageProps {
 
 export default function ErrorReportPage({ params }: ErrorReportPageProps) {
   const [jobId, setJobId] = useState<string | null>(null);
-  const [htmlContent, setHtmlContent] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [isIframeLoading, setIsIframeLoading] = useState(true);
 
   useEffect(() => {
     params.then((p) => setJobId(p.job_id));
   }, [params]);
 
-  const fetchReport = useCallback(async (id: string) => {
-    setHtmlContent(null);
-    setError(null);
-    setIsLoading(true);
+  useEffect(() => {
+    const applyTheme = () => {
+      setTheme(document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+    };
 
-    try {
-      const report = await resultService.getProfileReport(id);
-      setHtmlContent(report.content);
-    } catch (err) {
-      console.error('Failed to fetch profile report:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load error report');
-    } finally {
-      setIsLoading(false);
-    }
+    applyTheme();
+
+    const observer = new MutationObserver(applyTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
-    if (jobId) {
-      fetchReport(jobId);
-    }
-  }, [jobId, fetchReport]);
+    setIsIframeLoading(true);
+  }, [jobId, theme]);
+
+  const iframeSrc = useMemo(() => {
+    if (!jobId) return null;
+    const searchParams = new URLSearchParams({ theme });
+    return `/error-report/${jobId}/file?${searchParams.toString()}`;
+  }, [jobId, theme]);
 
   if (!jobId) {
     return (
@@ -70,26 +68,26 @@ export default function ErrorReportPage({ params }: ErrorReportPageProps) {
             <Button variant="outline" className="w-full sm:w-auto" asChild>
               <Link href={`/result/${jobId}`}>Back to Results</Link>
             </Button>
+            <Button className="w-full sm:w-auto" asChild>
+              <a href={`/error-report/${jobId}/pdf?theme=${theme}`}>Download PDF</a>
+            </Button>
+            
           </div>
         </div>
 
-        <div className="border rounded-lg overflow-hidden bg-background">
-          {isLoading && (
-            <div className="flex items-center justify-center h-[75vh]">
+        <div className="border rounded-lg overflow-hidden bg-background relative">
+          {isIframeLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/60 backdrop-blur-sm z-10">
               <p className="text-muted-foreground">Loading report...</p>
             </div>
           )}
-          {error && (
-            <div className="flex items-center justify-center h-[75vh]">
-              <p className="text-destructive">{error}</p>
-            </div>
-          )}
-          {htmlContent && (
+          {iframeSrc && (
             <iframe
               title="Error report"
-              srcDoc={htmlContent}
+              src={iframeSrc}
               className="w-full h-[75vh]"
               sandbox="allow-scripts allow-same-origin"
+              onLoad={() => setIsIframeLoading(false)}
             />
           )}
         </div>
