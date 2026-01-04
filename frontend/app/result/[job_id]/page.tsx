@@ -66,7 +66,7 @@ export default function ResultPage({ params }: ResultPageProps) {
   const dashOffset = circumference - (qualityScore / 100) * circumference;
 
   return (
-    <div className="min-h-screen pt-24 sm:pt-28 pb-16 px-4 sm:px-6 relative">
+    <div className="min-h-screen mt-22 pt-24 sm:pt-28 pb-16 px-4 sm:px-6 relative">
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_50%_0%,rgba(124,58,237,0.18)_0%,transparent_55%)]" />
       <div className="max-w-6xl mx-auto">
         <div className="grid gap-6 lg:grid-cols-3">
@@ -207,8 +207,8 @@ export default function ResultPage({ params }: ResultPageProps) {
         </div>
 
         <div className="mt-10">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg sm:text-xl font-semibold">Check Validation Errors</h2>
+          <div className="flex items-center justify-end mb-4">
+            {/* <h2 className="text-lg sm:text-xl font-semibold">Check Validation Errors</h2> */}
             <Link href="/ingest" className="text-sm text-primary hover:underline inline-flex items-center gap-2">
               <RotateCcw className="size-4" />
               Process another file

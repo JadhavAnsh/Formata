@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
 import { ProgressBar } from '@/components/ProgressBar';
 import { useJobStatus } from '@/hooks/useJobStatus';
-import { processService } from '@/services/process.service';
 import type { FilterParams } from '@/services/preview.service';
+import { processService } from '@/services/process.service';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 interface ProcessPageProps {
   params: Promise<{
@@ -17,7 +17,21 @@ export default function ProcessPage({ params }: ProcessPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [job_id, setjob_id] = useState<string | null>(null);
-  const [filters, setFilters] = useState<FilterParams | null>(null);
+  
+  // Initialize filters from URL params
+  const [filters] = useState<FilterParams | null>(() => {
+    const filtersParam = searchParams.get('filters');
+    if (filtersParam) {
+      try {
+        return JSON.parse(filtersParam);
+      } catch (e) {
+        console.error('Failed to parse filters from URL:', e);
+        return null;
+      }
+    }
+    return null;
+  });
+  
   const [processingStarted, setProcessingStarted] = useState(false);
   const [paramsError, setParamsError] = useState<string | null>(null);
 
@@ -38,19 +52,6 @@ export default function ProcessPage({ params }: ProcessPageProps) {
         setParamsError('Failed to parse job ID from URL');
       });
   }, [params]);
-
-  useEffect(() => {
-    // Extract filters from URL params
-    const filtersParam = searchParams.get('filters');
-    if (filtersParam) {
-      try {
-        const parsedFilters = JSON.parse(filtersParam);
-        setFilters(parsedFilters);
-      } catch (e) {
-        console.error('Failed to parse filters from URL:', e);
-      }
-    }
-  }, [searchParams]);
 
   const { job, isLoading, error } = useJobStatus({
     jobId: job_id,
@@ -143,11 +144,11 @@ export default function ProcessPage({ params }: ProcessPageProps) {
               {job.progress !== undefined && (
                 <p className="text-sm text-muted-foreground">Progress: {Math.round(progress)}%</p>
               )}
-              {job.error && (
-                <div className="mt-4 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
-                  Error: {job.error}
-                </div>
-              )}
+              {/* {job.error && (
+                // <div className="mt-4 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
+                //   Error: {job.error}
+                // </div>
+              )} */}
             </div>
           </>
         )}

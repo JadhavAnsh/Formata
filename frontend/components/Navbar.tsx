@@ -1,10 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import Link from "next/link"
-import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
-import { Menu, Moon, Sun } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,6 +8,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { motion } from "framer-motion"
+import { Menu, Moon, Sun } from "lucide-react"
+import Link from "next/link"
+import { useEffect, useState } from "react"
 
 type Theme = "light" | "dark"
 
@@ -46,7 +46,7 @@ export function Navbar() {
     >
       <div className="flex items-center gap-4 sm:gap-8">
         <Link href="/" className="text-xl font-bold tracking-tighter flex items-center gap-2">
-          <div className="w-6 h-6 bg-primary rounded-sm rotate-45" />
+          <div className="w-6 h-6 bg-primary rounded-sm italic rotate-45" />
           FORMATA
         </Link>
         
@@ -89,9 +89,6 @@ export function Navbar() {
                 <Link href="/convert">Convert</Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/login">Log in</Link>
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
