@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,6 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { convertService } from '@/services/convert.service';
+import { useCallback, useState } from 'react';
 
 interface FileConverterProps {
   onConvert?: (result: { data: string; format: 'csv' | 'json'; filename: string }) => void;
@@ -53,16 +53,28 @@ export function FileConverter({ onConvert }: FileConverterProps) {
     setDownloadUrl(null);
 
     try {
-      const result = await convertService.convertFile(selectedFile, targetFormat);
+      let blob: Blob;
       
-      // Create download URL from the result data
-      const blob = new Blob([result.data], {
-        type: targetFormat === 'json' ? 'application/json' : 'text/csv',
-      });
+      // Use the specific conversion endpoints
+      if (targetFormat === 'json') {
+        blob = await convertService.csvToJson(selectedFile);
+      } else {
+        blob = await convertService.jsonToCsv(selectedFile);
+      }
+      
+      // Create download URL from the blob
       const url = URL.createObjectURL(blob);
       setDownloadUrl(url);
       
-      onConvert?.(result);
+      // If onConvert callback is provided, read the blob as text and call it
+      if (onConvert) {
+        const text = await blob.text();
+        onConvert({
+          data: text,
+          format: targetFormat,
+          filename: `${selectedFile.name.split('.')[0]}.${targetFormat === 'json' ? 'json' : 'csv'}`,
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Conversion failed');
     } finally {

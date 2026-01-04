@@ -1,9 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { UploadBox } from '@/components/UploadBox';
 import { parseFile } from '@/utils/fileParser';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+
+// Store files in memory using a Map
+export const fileCache = new Map<string, File>();
 
 export default function IngestPage() {
   const router = useRouter();
@@ -21,7 +24,10 @@ export default function IngestPage() {
       // Generate a temporary preview ID (not a real job_id yet)
       const previewId = `preview_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      // Store file and parsed data in sessionStorage for preview page
+      // Store file in memory cache instead of sessionStorage
+      fileCache.set(previewId, file);
+      
+      // Store metadata and parsed data in sessionStorage for preview page
       const fileData = {
         previewId,
         fileName: file.name,
@@ -31,17 +37,8 @@ export default function IngestPage() {
         uploadedAt: new Date().toISOString(),
       };
       
-      // Store the file as a Blob in sessionStorage
-      // Convert file to ArrayBuffer, then to base64 for storage
-      const fileArrayBuffer = await file.arrayBuffer();
-      const uint8Array = new Uint8Array(fileArrayBuffer);
-      const base64String = btoa(String.fromCharCode(...uint8Array));
-      
-      // Store in sessionStorage (better for temporary data than localStorage)
+      // Store only metadata in sessionStorage (not the file itself)
       sessionStorage.setItem(`preview_data_${previewId}`, JSON.stringify(fileData));
-      sessionStorage.setItem(`file_data_${previewId}`, base64String);
-      sessionStorage.setItem(`file_name_${previewId}`, file.name);
-      sessionStorage.setItem(`file_type_${previewId}`, file.type || 'application/octet-stream');
       
       // Navigate to preview with preview_id in params
       router.push(`/preview/${previewId}`);
