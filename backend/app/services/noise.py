@@ -13,24 +13,38 @@ def remove_duplicates(df: pd.DataFrame) -> pd.DataFrame:
 
     try:
         df_copy = df.copy()
+        initial_count = len(df_copy)
 
-        # Normalize values before fingerprinting
-        normalized = df_copy.applymap(
-            lambda x: str(x).strip().lower() if pd.notna(x) else ""
-        )
+        # Try simple drop_duplicates first (exact matches)
+        df_deduped = df_copy.drop_duplicates()
+        exact_dupes_removed = initial_count - len(df_deduped)
+        
+        print(f"[DEDUPE] Initial rows: {initial_count}")
+        print(f"[DEDUPE] After exact match removal: {len(df_deduped)} (removed {exact_dupes_removed})")
+        
+        # If no exact duplicates, try normalized deduplication
+        if exact_dupes_removed == 0:
+            # Normalize values before fingerprinting
+            # Use map() instead of deprecated applymap()
+            normalized = df_copy.map(
+                lambda x: str(x).strip().lower() if pd.notna(x) else ""
+            )
 
-        # Stable fingerprint per row
-        fingerprint = normalized.apply(
-            lambda row: "|".join(row.values), axis=1
-        )
+            # Stable fingerprint per row
+            fingerprint = normalized.apply(
+                lambda row: "|".join(row.values), axis=1
+            )
 
-        # Keep first occurrence only
-        deduped_df = df_copy.loc[~fingerprint.duplicated()]
+            # Keep first occurrence only
+            df_deduped = df_copy.loc[~fingerprint.duplicated()]
+            fuzzy_dupes_removed = initial_count - len(df_deduped)
+            print(f"[DEDUPE] After fuzzy match removal: {len(df_deduped)} (removed {fuzzy_dupes_removed})")
 
-        return deduped_df.reset_index(drop=True)
+        return df_deduped.reset_index(drop=True)
 
-    except Exception:
-        # Fail soft
+    except Exception as e:
+        # Fail soft but log the error
+        print(f"[DEDUPE ERROR] {str(e)}")
         return df
 
 

@@ -18,6 +18,9 @@ class ProcessConfig(BaseModel):
     remove_duplicates: bool = True
     remove_outliers: bool = False
     filters: Optional[Dict[str, Any]] = None
+    validation_rules: Optional[Dict[str, Any]] = None
+    output_format: str = "csv"
+    detect_data_quality_issues: bool = True
 
 
 @router.post("/{job_id}", response_model=JobResponse)

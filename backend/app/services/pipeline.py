@@ -97,7 +97,7 @@ class ProcessingPipeline:
             else:
                 raise ValueError(f"Unsupported file type: {ext}")
             
-            result["rows_before"] = len(df)
+            initial_rows = len(df)
             logger.info(f"File parsed. Rows: {len(df)}, Columns: {len(df.columns)}")
             await asyncio.sleep(0)
             
@@ -106,9 +106,13 @@ class ProcessingPipeline:
                 progress_callback(0.25)
             logger.info("STEP 3: Normalizing data types and columns")
             
+            original_columns = list(df.columns)
             df = standardize_columns(df)
             df = normalize_types(df)
-            logger.info(f"Normalization completed. Columns: {list(df.columns)}")
+            normalized_columns = list(df.columns)
+            columns_renamed = sum(1 for o, n in zip(original_columns, normalized_columns) if o != n)
+            logger.info(f"Normalization completed. Columns renamed: {columns_renamed}/{len(df.columns)}")
+            logger.info(f"Column names: {list(df.columns)}")
             await asyncio.sleep(0)
             
             # ============ STEP 4: Apply filters (40% progress) ============
@@ -116,11 +120,16 @@ class ProcessingPipeline:
                 progress_callback(0.4)
             logger.info("STEP 4: Applying filters")
             
+            rows_before_filters = len(df)
             filters = config.get("filters")
             if filters:
                 df = apply_filters(df, filters)
                 logger.info(f"Filters applied. Remaining rows: {len(df)}")
+            rows_filtered = rows_before_filters - len(df)
             await asyncio.sleep(0)
+            
+            # Capture rows_before right before cleaning operations
+            result["rows_before"] = len(df)
             
             # ============ STEP 5: Remove duplicates and outliers (50% progress) ============
             if progress_callback:
@@ -132,15 +141,25 @@ class ProcessingPipeline:
             
             if config.get("remove_duplicates", True):
                 before_dedup = len(df)
+                logger.info(f"Before duplicate removal: {before_dedup} rows")
                 df = remove_duplicates(df)
                 duplicates_removed = before_dedup - len(df)
-                logger.info(f"Removed {duplicates_removed} duplicate rows")
+                logger.info(f"After duplicate removal: {len(df)} rows (removed {duplicates_removed})")
+                if duplicates_removed == 0:
+                    logger.info("No duplicates found in dataset")
+            else:
+                logger.info("Duplicate removal is disabled in config")
             
             if config.get("remove_outliers", False):
                 before_outliers = len(df)
+                logger.info(f"Before outlier removal: {before_outliers} rows")
                 df = remove_outliers(df)
                 outliers_removed = before_outliers - len(df)
-                logger.info(f"Removed {outliers_removed} outlier rows")
+                logger.info(f"After outlier removal: {len(df)} rows (removed {outliers_removed})")
+                if outliers_removed == 0:
+                    logger.info("No outliers detected using IQR method")
+            else:
+                logger.info("Outlier removal is disabled in config")
             
             result["rows_after"] = len(df)
             await asyncio.sleep(0)
@@ -150,15 +169,40 @@ class ProcessingPipeline:
                 progress_callback(0.65)
             logger.info("STEP 6: Validating results")
             
+            # Check for data quality issues (missing values, invalid types, etc.)
+            if config.get("detect_data_quality_issues", True):
+                quality_errors = []
+                
+                # Check for missing values
+                missing_counts = df.isnull().sum()
+                for col, count in missing_counts.items():
+                    if count > 0:
+                        percentage = (count / len(df)) * 100
+                        quality_errors.append(
+                            f"Column '{col}': {count} missing values ({percentage:.1f}%)"
+                        )
+                
+                # Check for columns with all null values
+                all_null_cols = df.columns[df.isnull().all()].tolist()
+                for col in all_null_cols:
+                    quality_errors.append(f"Column '{col}': All values are missing")
+                
+                if quality_errors:
+                    result["errors"].extend(quality_errors)
+                    logger.warning(f"Data quality check found {len(quality_errors)} issues")
+                else:
+                    logger.info("Data quality check: No issues found")
+            
+            # Schema validation (if rules provided)
             validation_rules = config.get("validation_rules")
             if validation_rules:
-                errors = get_validation_errors(
+                schema_errors = get_validation_errors(
                     {"records": df.to_dict(orient='records')},
                     validation_rules
                 )
-                if errors:
-                    result["errors"].extend(errors)
-                    logger.warning(f"Validation found {len(errors)} issues")
+                if schema_errors:
+                    result["errors"].extend(schema_errors)
+                    logger.warning(f"Schema validation found {len(schema_errors)} issues")
             
             await asyncio.sleep(0)
             
@@ -226,12 +270,17 @@ class ProcessingPipeline:
             processing_time = time.time() - start_time
             
             result["summary"] = {
-                "rows_before": result["rows_before"],
+                "rows_initial": initial_rows,
+                "rows_before_cleaning": result["rows_before"],
                 "rows_after": result["rows_after"],
+                "rows_filtered": rows_filtered,
                 "rows_removed": result["rows_before"] - result["rows_after"],
                 "duplicates_removed": duplicates_removed,
                 "outliers_removed": outliers_removed,
+                "total_rows_removed": initial_rows - result["rows_after"],
                 "columns": len(df.columns),
+                "columns_renamed": columns_renamed,
+                "data_normalized": True,
                 "output_format": output_format,
                 "processing_time_seconds": round(processing_time, 2),
                 "error_count": len(result["errors"])
