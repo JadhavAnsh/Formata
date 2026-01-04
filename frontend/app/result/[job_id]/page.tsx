@@ -108,6 +108,20 @@ export default function ResultPage({ params }: ResultPageProps) {
               </Button>
             </div>
 
+            <Button
+              variant="secondary"
+              className="w-full mt-3"
+              onClick={() => {
+                if (!job_id) return;
+                resultService.downloadVectorPkl(job_id).catch((err) => {
+                  console.error('Download failed:', err);
+                });
+              }}
+            >
+              <Download className="mr-2 size-4" />
+              Download Vector .pkl
+            </Button>
+
             {isLoading && <p className="text-muted-foreground mt-6">Loading results...</p>}
 
             {error && (
