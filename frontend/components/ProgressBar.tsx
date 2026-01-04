@@ -1,5 +1,3 @@
-'use client';
-
 interface ProgressBarProps {
   progress: number; // 0-100
   status?: string;

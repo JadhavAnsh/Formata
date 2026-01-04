@@ -1,5 +1,3 @@
-'use client';
-
 interface ValidationError {
   row?: number;
   column?: string;

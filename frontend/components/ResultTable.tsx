@@ -1,5 +1,3 @@
-'use client';
-
 interface ResultTableProps {
   data?: Array<Record<string, any>>;
   beforeData?: Array<Record<string, any>>;
