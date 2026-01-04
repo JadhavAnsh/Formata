@@ -78,21 +78,48 @@ async function renderPdfFromHtml(html: string, theme: 'light' | 'dark') {
   }
 }
 
-export async function GET(request: Request, { params }: { params: { job_id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ job_id: string }> }) {
+  const { job_id } = await params;
   const url = new URL(request.url);
   const theme = url.searchParams.get('theme') === 'dark' ? 'dark' : 'light';
 
-  const reportPath = path.join(process.cwd(), `${params.job_id}_clean_profile.html`);
-  const fallbackPath = path.join(process.cwd(), 'cf61c556-961f-484d-9110-d25b651ecf67_clean_profile.html');
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
   const cssPath = path.join(process.cwd(), 'public', 'ydata-profile-theme-v2.css');
 
   const css = await readFile(cssPath, 'utf8');
 
   let html: string;
+
   try {
-    html = await readFile(reportPath, 'utf8');
-  } catch {
-    html = await readFile(fallbackPath, 'utf8');
+    // Call the backend API to get the profile report
+    const apiUrl = `${API_BASE_URL}/profile/${job_id}`;
+    const response = await fetch(apiUrl, {
+      headers: {
+        ...(API_KEY && { 'X-API-Key': API_KEY }),
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch profile: ${response.statusText}`);
+    }
+
+    const profileData = await response.json();
+    html = profileData.content || profileData.html;
+
+    if (!html) {
+      throw new Error('No HTML content in profile response');
+    }
+  } catch (error) {
+    // Fallback to local file if API fails
+    const reportPath = path.join(process.cwd(), `${job_id}_clean_profile.html`);
+    const fallbackPath = path.join(process.cwd(), 'cf61c556-961f-484d-9110-d25b651ecf67_clean_profile.html');
+
+    try {
+      html = await readFile(reportPath, 'utf8');
+    } catch {
+      html = await readFile(fallbackPath, 'utf8');
+    }
   }
 
   html = injectCss(html, css);
@@ -100,10 +127,10 @@ export async function GET(request: Request, { params }: { params: { job_id: stri
 
   const pdf = await renderPdfFromHtml(html, theme);
 
-  return new NextResponse(pdf, {
+  return new NextResponse(Buffer.from(pdf), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="formata-error-report-${params.job_id}.pdf"`,
+      'Content-Disposition': `attachment; filename="formata-error-report-${job_id}.pdf"`,
       'Cache-Control': 'no-store',
     },
   });

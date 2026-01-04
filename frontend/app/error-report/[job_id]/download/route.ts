@@ -62,34 +62,68 @@ function injectThemeAssets(html: string, theme?: 'light' | 'dark') {
   return `${headInjection}${themeInjection}${themedHtml}`;
 }
 
-export async function GET(request: Request, { params }: { params: { job_id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ job_id: string }> }) {
+  const { job_id } = await params;
   const url = new URL(request.url);
   const theme = url.searchParams.get('theme') === 'dark' ? 'dark' : url.searchParams.get('theme') === 'light' ? 'light' : undefined;
 
-  const filePath = path.join(process.cwd(), `${params.job_id}_clean_profile.html`);
-  const fallbackPath = path.join(process.cwd(), 'cf61c556-961f-484d-9110-d25b651ecf67_clean_profile.html');
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
   try {
-    const html = await readFile(filePath, 'utf8');
+    // Call the backend API to get the profile report
+    const apiUrl = `${API_BASE_URL}/profile/${job_id}`;
+    const response = await fetch(apiUrl, {
+      headers: {
+        ...(API_KEY && { 'X-API-Key': API_KEY }),
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch profile: ${response.statusText}`);
+    }
+
+    const profileData = await response.json();
+    const html = profileData.content || profileData.html;
+
+    if (!html) {
+      throw new Error('No HTML content in profile response');
+    }
+
     return new NextResponse(injectThemeAssets(html, theme), {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
-        'Content-Disposition': `attachment; filename="formata-error-report-${params.job_id}.html"`,
+        'Content-Disposition': `attachment; filename="formata-error-report-${job_id}.html"`,
         'Cache-Control': 'no-store',
       },
     });
-  } catch {
+  } catch (error) {
+    // Fallback to local file if API fails
+    const filePath = path.join(process.cwd(), `${job_id}_clean_profile.html`);
+    const fallbackPath = path.join(process.cwd(), 'cf61c556-961f-484d-9110-d25b651ecf67_clean_profile.html');
+
     try {
-      const html = await readFile(fallbackPath, 'utf8');
+      const html = await readFile(filePath, 'utf8');
       return new NextResponse(injectThemeAssets(html, theme), {
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
-          'Content-Disposition': `attachment; filename="formata-error-report-${params.job_id}.html"`,
+          'Content-Disposition': `attachment; filename="formata-error-report-${job_id}.html"`,
           'Cache-Control': 'no-store',
         },
       });
     } catch {
-      return new NextResponse('Report not found', { status: 404 });
+      try {
+        const html = await readFile(fallbackPath, 'utf8');
+        return new NextResponse(injectThemeAssets(html, theme), {
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Content-Disposition': `attachment; filename="formata-error-report-${job_id}.html"`,
+            'Cache-Control': 'no-store',
+          },
+        });
+      } catch {
+        return new NextResponse('Report not found', { status: 404 });
+      }
     }
   }
 }

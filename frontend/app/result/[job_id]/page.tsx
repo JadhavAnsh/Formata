@@ -53,7 +53,13 @@ export default function ResultPage({ params }: ResultPageProps) {
     0;
 
   const errorCount = result?.errors?.length ?? 0;
-  const qualityScore = clampToPercent(totalRows > 0 ? Math.round(100 - (errorCount / totalRows) * 100) : 0);
+  
+  // Use consistency_score from API if available, otherwise fallback to calculated score
+  const qualityScore = clampToPercent(
+    result?.metadata?.quality_score?.consistency_score ??
+    result?.metadata?.summary?.quality_score?.consistency_score ??
+    (totalRows > 0 ? Math.round(100 - (errorCount / totalRows) * 100) : 0)
+  );
 
   const radius = 44;
   const circumference = 2 * Math.PI * radius;
@@ -97,7 +103,6 @@ export default function ResultPage({ params }: ResultPageProps) {
               <Button
                 variant="outline"
                 className="w-full sm:w-auto sm:flex-1"
-                disabled={!result?.errors?.length}
                 onClick={() => {
                   if (!job_id) return;
                   router.push(`/error-report/${job_id}`);
@@ -148,11 +153,11 @@ export default function ResultPage({ params }: ResultPageProps) {
           <Card className="h-full">
             <CardContent className="p-6">
               <div className="flex items-center justify-between mb-6">
-                <div>
+                {/* <div>
                   <div className="text-xs text-muted-foreground">Total Records</div>
                   <div className="text-2xl font-semibold">{totalRows}</div>
-                </div>
-                <div className="text-xs text-muted-foreground">{errorCount} issues</div>
+                </div> */}
+                {/* <div className="text-xs text-muted-foreground">{errorCount} issues</div> */}
               </div>
 
               <div className="flex flex-col items-center justify-center gap-4">
