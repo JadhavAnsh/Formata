@@ -374,6 +374,110 @@
       ]
     },
     {
+      "name": "Format Conversion",
+      "item": [
+        {
+          "name": "Convert CSV to JSON",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "data.csv",
+                  "disabled": false
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/convert/csv-to-json",
+              "host": ["{{base_url}}"],
+              "path": ["convert", "csv-to-json"]
+            },
+            "description": "Convert CSV file to JSON format\n\n**Accepts:** CSV file upload\n**Returns:** JSON with records array\n\nSupports:\n- Type inference and normalization\n- Nested JSON flattening\n- Proper encoding handling"
+          },
+          "response": []
+        },
+        {
+          "name": "Convert JSON to CSV",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"data\": {\n    \"records\": [\n      {\n        \"name\": \"John Doe\",\n        \"age\": 30,\n        \"email\": \"john@example.com\"\n      },\n      {\n        \"name\": \"Jane Smith\",\n        \"age\": 25,\n        \"email\": \"jane@example.com\"\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/convert/json-to-csv",
+              "host": ["{{base_url}}"],
+              "path": ["convert", "json-to-csv"]
+            },
+            "description": "Convert JSON to CSV format\n\n**Accepts:** JSON data (dict with records or list of objects)\n**Returns:** CSV as string\n\nRequest body can be:\n- {\"data\": {\"records\": [...]}} - dict with records key\n- {\"data\": [{...}, {...}]} - direct array of objects"
+          },
+          "response": []
+        },
+        {
+          "name": "Generic Format Converter",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input_format\": \"json\",\n  \"output_format\": \"csv\",\n  \"data\": {\n    \"records\": [\n      {\n        \"name\": \"John Doe\",\n        \"age\": 30,\n        \"email\": \"john@example.com\"\n      }\n    ]\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/convert",
+              "host": ["{{base_url}}"],
+              "path": ["convert"]
+            },
+            "description": "Generic format converter endpoint\n\n**Supports:** CSV ↔ JSON conversion\n**Validates:** Input and output formats\n\nSpecify formats and provide data to convert between them.\nInput and output formats must be different."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Job Management",
       "item": [
         {
@@ -393,6 +497,26 @@
               "path": ["jobs"]
             },
             "description": "Get all jobs with current status"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Job Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/jobs/{{job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["jobs", "{{job_id}}"]
+            },
+            "description": "Get detailed job information\n\nReturns:\n- job_id: Unique job identifier\n- filename: Original uploaded filename\n- status: Current job status\n- progress: Processing progress (0.0-1.0)\n- created_at: Job creation timestamp\n- updated_at: Last update timestamp\n- errors: Array of validation errors\n- result: Processing results and file paths\n- metadata: Additional job metadata"
           },
           "response": []
         },
