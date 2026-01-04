@@ -136,6 +136,7 @@ export async function parseFile(file: File): Promise<ParsedData> {
 
 /**
  * Apply filters to data client-side
+ * Column keys do NOT start with '_' - only special filters like _textSearch, _dateRange, _numericRange start with '_'
  */
 export function applyFiltersClientSide(
   data: Array<Record<string, any>>,
@@ -147,96 +148,186 @@ export function applyFiltersClientSide(
 
   let filtered = [...data];
 
+  // Process all filters - multiple column filters can be applied
   Object.entries(filters).forEach(([key, rule]) => {
     if (!rule || typeof rule !== 'object' || !rule.op) return;
 
-    const column = key.startsWith('_') ? null : key; // Simple filters start with _
-    
-    if (key === '_textSearch' && rule.value) {
-      // Text search across all columns
-      const searchTerm = String(rule.value).toLowerCase();
-      filtered = filtered.filter(row => {
-        return Object.values(row).some(val => 
-          String(val).toLowerCase().includes(searchTerm)
-        );
-      });
-    } else if (key === '_dateRange' && (rule.start || rule.end)) {
-      // Date range filter (find first date column)
-      const dateColumn = Object.keys(filtered[0] || {}).find(col => {
-        const sample = filtered[0]?.[col];
-        if (typeof sample === 'string') {
-          const date = new Date(sample);
-          return !isNaN(date.getTime());
-        }
-        return false;
-      });
-
-      if (dateColumn) {
+    // Special filters start with '_' (not column names)
+    if (key.startsWith('_')) {
+      // Handle special filters
+      if (key === '_textSearch' && rule.value) {
+        // Text search across all columns
+        const searchTerm = String(rule.value).toLowerCase();
         filtered = filtered.filter(row => {
-          const dateValue = new Date(row[dateColumn]);
-          if (isNaN(dateValue.getTime())) return false;
-          if (rule.start && dateValue < new Date(rule.start)) return false;
-          if (rule.end && dateValue > new Date(rule.end)) return false;
-          return true;
+          return Object.values(row).some(val => 
+            String(val).toLowerCase().includes(searchTerm)
+          );
         });
-      }
-    } else if (key === '_numericRange' && (rule.min !== undefined || rule.max !== undefined)) {
-      // Numeric range filter (find first numeric column)
-      const numericColumn = Object.keys(filtered[0] || {}).find(col => {
-        const sample = filtered[0]?.[col];
-        return typeof sample === 'number';
-      });
-
-      if (numericColumn) {
-        filtered = filtered.filter(row => {
-          const numValue = Number(row[numericColumn]);
-          if (isNaN(numValue)) return false;
-          if (rule.min !== undefined && numValue < Number(rule.min)) return false;
-          if (rule.max !== undefined && numValue > Number(rule.max)) return false;
-          return true;
-        });
-      }
-    } else if (column && filtered[0]?.[column] !== undefined) {
-      // Column-specific filter
-      const columnValue = filtered[0][column];
-      const isNumeric = typeof columnValue === 'number';
-      const isDate = typeof columnValue === 'string' && !isNaN(new Date(columnValue).getTime());
-
-      filtered = filtered.filter(row => {
-        const value = row[column];
-        
-        switch (rule.op) {
-          case 'equals':
-          case '==':
-            return String(value) === String(rule.value);
-          case 'contains':
-            return String(value).toLowerCase().includes(String(rule.value).toLowerCase());
-          case 'starts_with':
-            return String(value).toLowerCase().startsWith(String(rule.value).toLowerCase());
-          case 'ends_with':
-            return String(value).toLowerCase().endsWith(String(rule.value).toLowerCase());
-          case '>':
-            return isNumeric ? Number(value) > Number(rule.value) : false;
-          case '>=':
-            return isNumeric ? Number(value) >= Number(rule.value) : false;
-          case '<':
-            return isNumeric ? Number(value) < Number(rule.value) : false;
-          case '<=':
-            return isNumeric ? Number(value) <= Number(rule.value) : false;
-          case 'between':
-            const numValue = Number(value);
-            return isNumeric && numValue >= Number(rule.min) && numValue <= Number(rule.max);
-          case 'range':
-            if (isDate) {
-              const dateValue = new Date(value);
-              return (!rule.start || dateValue >= new Date(rule.start)) &&
-                     (!rule.end || dateValue <= new Date(rule.end));
+      } else if (key === '_dateRange' && (rule.start || rule.end)) {
+        // Date range filter (find first date column)
+        if (filtered.length > 0) {
+          const dateColumn = Object.keys(filtered[0] || {}).find(col => {
+            const sample = filtered[0]?.[col];
+            if (typeof sample === 'string') {
+              const date = new Date(sample);
+              return !isNaN(date.getTime());
             }
             return false;
-          default:
-            return true;
+          });
+
+          if (dateColumn) {
+            filtered = filtered.filter(row => {
+              const dateValue = new Date(row[dateColumn]);
+              if (isNaN(dateValue.getTime())) return false;
+              if (rule.start && dateValue < new Date(rule.start)) return false;
+              if (rule.end && dateValue > new Date(rule.end)) return false;
+              return true;
+            });
+          }
         }
-      });
+      } else if (key === '_numericRange' && (rule.min !== undefined || rule.max !== undefined)) {
+        // Numeric range filter (find first numeric column)
+        if (filtered.length > 0) {
+          const numericColumn = Object.keys(filtered[0] || {}).find(col => {
+            const sample = filtered[0]?.[col];
+            return typeof sample === 'number';
+          });
+
+          if (numericColumn) {
+            filtered = filtered.filter(row => {
+              const numValue = Number(row[numericColumn]);
+              if (isNaN(numValue)) return false;
+              if (rule.min !== undefined && numValue < Number(rule.min)) return false;
+              if (rule.max !== undefined && numValue > Number(rule.max)) return false;
+              return true;
+            });
+          }
+        }
+      }
+    } else {
+      // Column-specific filter - key is the column name (doesn't start with '_')
+      const column = key;
+      
+      // Check if column exists in the data (check first row if available)
+      if (filtered.length > 0 && filtered[0] && column in filtered[0]) {
+        // Support multiple rules for the same column (AND logic - all conditions must be met)
+        const rules = Array.isArray(rule) ? rule : [rule];
+        
+        // Determine column type from first non-null value
+        let columnType: 'numeric' | 'datetime' | 'boolean' | 'text' = 'text';
+        let sampleValue: any = null;
+        
+        // Find first non-null value to determine type
+        for (const row of filtered) {
+          if (row[column] !== null && row[column] !== undefined) {
+            sampleValue = row[column];
+            break;
+          }
+        }
+        
+        if (sampleValue !== null && sampleValue !== undefined) {
+          if (typeof sampleValue === 'boolean') {
+            columnType = 'boolean';
+          } else if (typeof sampleValue === 'number') {
+            columnType = 'numeric';
+          } else if (typeof sampleValue === 'string') {
+            const dateValue = new Date(sampleValue);
+            if (!isNaN(dateValue.getTime()) && sampleValue.length > 8) {
+              columnType = 'datetime';
+            }
+          }
+        }
+
+        // Apply filters with AND logic - row matches if ALL rules match
+        filtered = filtered.filter(row => {
+          const value = row[column];
+          
+          // Handle null/undefined values
+          if (value === null || value === undefined) {
+            return false; // Exclude null/undefined values by default
+          }
+          
+          // Check if ALL rules match (AND logic)
+          return rules.every(ruleItem => {
+            if (!ruleItem || typeof ruleItem !== 'object' || !ruleItem.op) {
+              return false;
+            }
+            
+            switch (ruleItem.op) {
+              case 'equals':
+              case '==':
+                if (columnType === 'numeric') {
+                  return Number(value) === Number(ruleItem.value);
+                } else if (columnType === 'boolean') {
+                  return Boolean(value) === Boolean(ruleItem.value);
+                } else if (columnType === 'datetime') {
+                  return new Date(value).getTime() === new Date(ruleItem.value).getTime();
+                } else {
+                  return String(value) === String(ruleItem.value);
+                }
+                
+              case 'contains':
+                return String(value).toLowerCase().includes(String(ruleItem.value).toLowerCase());
+                
+              case 'starts_with':
+                return String(value).toLowerCase().startsWith(String(ruleItem.value).toLowerCase());
+                
+              case 'ends_with':
+                return String(value).toLowerCase().endsWith(String(ruleItem.value).toLowerCase());
+                
+              case '>':
+                if (columnType === 'numeric') {
+                  return Number(value) > Number(ruleItem.value);
+                } else if (columnType === 'datetime') {
+                  return new Date(value).getTime() > new Date(ruleItem.value).getTime();
+                }
+                return false;
+                
+              case '>=':
+                if (columnType === 'numeric') {
+                  return Number(value) >= Number(ruleItem.value);
+                } else if (columnType === 'datetime') {
+                  return new Date(value).getTime() >= new Date(ruleItem.value).getTime();
+                }
+                return false;
+                
+              case '<':
+                if (columnType === 'numeric') {
+                  return Number(value) < Number(ruleItem.value);
+                } else if (columnType === 'datetime') {
+                  return new Date(value).getTime() < new Date(ruleItem.value).getTime();
+                }
+                return false;
+                
+              case '<=':
+                if (columnType === 'numeric') {
+                  return Number(value) <= Number(ruleItem.value);
+                } else if (columnType === 'datetime') {
+                  return new Date(value).getTime() <= new Date(ruleItem.value).getTime();
+                }
+                return false;
+                
+              case 'between':
+                if (columnType === 'numeric') {
+                  const numValue = Number(value);
+                  return numValue >= Number(ruleItem.min) && numValue <= Number(ruleItem.max);
+                }
+                return false;
+                
+              case 'range':
+                if (columnType === 'datetime') {
+                  const dateValue = new Date(value);
+                  return (!ruleItem.start || dateValue >= new Date(ruleItem.start)) &&
+                         (!ruleItem.end || dateValue <= new Date(ruleItem.end));
+                }
+                return false;
+                
+              default:
+                return false;
+            }
+          });
+        });
+      }
     }
   });
 

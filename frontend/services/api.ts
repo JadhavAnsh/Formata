@@ -3,6 +3,7 @@
  */
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
 export interface ApiError {
   message: string;
@@ -20,6 +21,7 @@ export async function apiRequest<T>(
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      ...(API_KEY && { 'X-API-Key': API_KEY }),
       ...options.headers,
     },
   };
@@ -62,9 +64,15 @@ export async function apiUpload(
     });
   }
 
+  const headers: HeadersInit = {};
+  if (API_KEY) {
+    headers['X-API-Key'] = API_KEY;
+  }
+
   try {
     const response = await fetch(url, {
       method: 'POST',
+      headers,
       body: formData,
     });
 

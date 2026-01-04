@@ -3,55 +3,51 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { UploadBox } from '@/components/UploadBox';
-import { useUpload } from '@/hooks/useUpload';
 import { parseFile } from '@/utils/fileParser';
 
 export default function IngestPage() {
   const router = useRouter();
   const [isParsing, setIsParsing] = useState(false);
-  const [parseError, setParseError] = useState<Error | null>(null);
-  const { upload, isUploading, error } = useUpload({
-    onSuccess: (job) => {
-      router.push(`/preview/${job.id}`);
-    },
-  });
+  const [error, setError] = useState<Error | null>(null);
 
   const handleFileSelect = async (file: File) => {
-    // Try to parse file client-side first (temporary bypass)
     setIsParsing(true);
-    setParseError(null);
+    setError(null);
     
     try {
+      // Parse file client-side for preview (no API call yet)
       const parsedData = await parseFile(file);
       
-      // Generate a temporary job ID
-      const tempJobId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      // Generate a temporary preview ID (not a real job_id yet)
+      const previewId = `preview_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      // Store parsed data in localStorage
+      // Store file and parsed data in sessionStorage for preview page
       const fileData = {
-        jobId: tempJobId,
+        previewId,
         fileName: file.name,
         fileType: file.name.split('.').pop()?.toLowerCase(),
+        fileSize: file.size,
         parsedData,
         uploadedAt: new Date().toISOString(),
       };
       
-      localStorage.setItem(`preview_data_${tempJobId}`, JSON.stringify(fileData));
+      // Store the file as a Blob in sessionStorage
+      // Convert file to ArrayBuffer, then to base64 for storage
+      const fileArrayBuffer = await file.arrayBuffer();
+      const uint8Array = new Uint8Array(fileArrayBuffer);
+      const base64String = btoa(String.fromCharCode(...uint8Array));
       
-      // Navigate to preview with temp job ID
-      router.push(`/preview/${tempJobId}`);
+      // Store in sessionStorage (better for temporary data than localStorage)
+      sessionStorage.setItem(`preview_data_${previewId}`, JSON.stringify(fileData));
+      sessionStorage.setItem(`file_data_${previewId}`, base64String);
+      sessionStorage.setItem(`file_name_${previewId}`, file.name);
+      sessionStorage.setItem(`file_type_${previewId}`, file.type || 'application/octet-stream');
+      
+      // Navigate to preview with preview_id in params
+      router.push(`/preview/${previewId}`);
     } catch (err) {
-      // If parsing fails, try the API upload
-      console.warn('Client-side parsing failed, trying API upload:', err);
-      setParseError(err instanceof Error ? err : new Error('Failed to parse file'));
-      
-      // Fall back to API upload
-      try {
-        await upload(file);
-      } catch (uploadErr) {
-        // Both failed
-        console.error('Both client-side parsing and API upload failed');
-      }
+      console.error('File parsing failed:', err);
+      setError(err instanceof Error ? err : new Error('Failed to parse file'));
     } finally {
       setIsParsing(false);
     }
@@ -72,15 +68,15 @@ export default function IngestPage() {
         />
       </div>
       
-      {(isUploading || isParsing) && (
+      {isParsing && (
         <p className="mt-4 text-sm text-gray-500 center">
-          {isParsing ? 'Parsing file...' : 'Uploading...'}
+          Processing...
         </p>
       )}
       
-      {(error || parseError) && (
+      {error && (
         <p className="mt-4 text-sm text-red-500 center">
-          {(error || parseError)?.message}
+          {error.message}
         </p>
       )}
     </div>

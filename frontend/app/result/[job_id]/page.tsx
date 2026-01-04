@@ -1,31 +1,20 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 
-import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { ResultTable } from '@/components/ResultTable';
 import { ErrorTable } from '@/components/ErrorTable';
-import { useResult } from '@/hooks/useResult';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { useResult } from '@/hooks/useResult';
+import { resultService } from '@/services/result.service';
 import { Download, FileText, RotateCcw } from 'lucide-react';
-import type { ProcessingResult } from '@/services/result.service';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 interface ResultPageProps {
   params: Promise<{
-    jobId: string;
+    job_id: string;
   }>;
-}
-
-function downloadJson(filename: string, value: unknown) {
-  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 function clampToPercent(value: number) {
@@ -34,84 +23,26 @@ function clampToPercent(value: number) {
 }
 
 export default function ResultPage({ params }: ResultPageProps) {
-  const [jobId, setJobId] = useState<string | null>(null);
+  const [job_id, setjob_id] = useState<string | null>(null);
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const isDemo = searchParams.get('demo') === '1';
 
   useEffect(() => {
-    params.then((p) => setJobId(p.jobId));
+    params.then((p) => setjob_id(p.job_id));
   }, [params]);
 
-  const demoResult: ProcessingResult | null = useMemo(() => {
-    if (!jobId) return null;
-
-    const beforeRows = [
-      { id: '001', email: 'alice@example.com', age: '29', signup_date: '2024-10-01', active: 'true' },
-      { id: '002', email: 'bob@example.com', age: 'not_a_number', signup_date: '2024/11/03', active: 'yes' },
-      { id: '003', email: 'cara@example.com', age: '41', signup_date: '2024-12-09', active: 'false' },
-      { id: '004', email: 'dan@example.com', age: '34', signup_date: 'invalid_date', active: 'true' },
-    ];
-
-    const afterRows = [
-      { id: 1, email: 'alice@example.com', age: 29, signup_date: '2024-10-01', active: true },
-      { id: 2, email: 'bob@example.com', age: null, signup_date: '2024-11-03', active: true },
-      { id: 3, email: 'cara@example.com', age: 41, signup_date: '2024-12-09', active: false },
-      { id: 4, email: 'dan@example.com', age: 34, signup_date: null, active: true },
-    ];
-
-    return {
-      jobId,
-      beforeData: {
-        columns: [
-          { name: 'id', type: 'string' },
-          { name: 'email', type: 'string' },
-          { name: 'age', type: 'string' },
-          { name: 'signup_date', type: 'string' },
-          { name: 'active', type: 'string' },
-        ],
-        rows: beforeRows,
-        rowCount: beforeRows.length,
-        metadata: {
-          source: 'demo',
-          processedAt: new Date().toISOString(),
-          transformations: ['type-normalization', 'date-parsing', 'boolean-mapping', 'validation'],
-        },
-      },
-      afterData: {
-        columns: [
-          { name: 'id', type: 'number' },
-          { name: 'email', type: 'string' },
-          { name: 'age', type: 'number', nullable: true },
-          { name: 'signup_date', type: 'date', nullable: true },
-          { name: 'active', type: 'boolean' },
-        ],
-        rows: afterRows,
-        rowCount: afterRows.length,
-        metadata: {
-          source: 'demo',
-          processedAt: new Date().toISOString(),
-          transformations: ['type-normalization', 'date-parsing', 'boolean-mapping', 'validation'],
-        },
-      },
-      errors: [
-        { row: 2, column: 'age', message: 'Invalid number', value: 'not_a_number', code: 'INVALID_NUMBER', severity: 'error' },
-        { row: 4, column: 'signup_date', message: 'Invalid date', value: 'invalid_date', code: 'INVALID_DATE', severity: 'error' },
-      ],
-    };
-  }, [jobId]);
-
-  const { result: apiResult, isLoading: isApiLoading, error: apiError } = useResult({
-    jobId,
-    enabled: !isDemo,
+  const { result, isLoading, error } = useResult({
+    jobId: job_id,
+    enabled: !!job_id,
   });
 
-  const result = isDemo ? demoResult : apiResult;
-  const isLoading = isDemo ? false : isApiLoading;
-  const error = isDemo ? null : apiError;
-
-  if (!jobId) {
-    return <div>Loading...</div>;
+  if (!job_id) {
+    return (
+      <div className="container mx-auto mt-16 sm:mt-20 px-4 sm:px-6 max-w-6xl">
+        <div className="flex items-center justify-center p-8">
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
   }
 
   const totalRows =
@@ -147,14 +78,18 @@ export default function ResultPage({ params }: ResultPageProps) {
             </div>
 
             <div className="text-muted-foreground text-sm mb-6">
-              <span className="opacity-80">Job ID:</span> <span className="break-all">{jobId}</span>
+              <span className="opacity-80">Job ID:</span> <span className="break-all">{job_id}</span>
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3">
               <Button
                 className="w-full sm:w-auto sm:flex-1"
-                disabled={!result?.afterData?.rows?.length}
-                onClick={() => downloadJson(`formata-clean-${jobId}.json`, result?.afterData?.rows ?? [])}
+                onClick={() => {
+                  if (!job_id) return;
+                  resultService.downloadResult(job_id).catch((err) => {
+                    console.error('Download failed:', err);
+                  });
+                }}
               >
                 <Download className="mr-2 size-4" />
                 Download Clean Dataset
@@ -164,8 +99,8 @@ export default function ResultPage({ params }: ResultPageProps) {
                 className="w-full sm:w-auto sm:flex-1"
                 disabled={!result?.errors?.length}
                 onClick={() => {
-                  if (!jobId) return;
-                  router.push(`/error-report/${jobId}`);
+                  if (!job_id) return;
+                  router.push(`/error-report/${job_id}`);
                 }}
               >
                 <FileText className="mr-2 size-4" />
@@ -240,14 +175,14 @@ export default function ResultPage({ params }: ResultPageProps) {
 
         <div className="mt-10">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg sm:text-xl font-semibold">Transformation Preview</h2>
+            <h2 className="text-lg sm:text-xl font-semibold">Check Validation Errors</h2>
             <Link href="/ingest" className="text-sm text-primary hover:underline inline-flex items-center gap-2">
               <RotateCcw className="size-4" />
               Process another file
             </Link>
           </div>
 
-          {result && (
+          {/* {result && (
             <div className="grid gap-6 lg:grid-cols-2">
               <Card>
                 <CardContent className="p-0">
@@ -277,7 +212,7 @@ export default function ResultPage({ params }: ResultPageProps) {
                 </CardContent>
               </Card>
             </div>
-          )}
+          )} */}
 
           {result?.errors?.length ? (
             <div className="mt-8">

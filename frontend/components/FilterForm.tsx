@@ -112,7 +112,18 @@ export function FilterForm({
         rule.value = filter.value;
       }
 
-      filters[filter.column] = rule;
+      // Support multiple filters on the same column using arrays
+      // Multiple filters on same column will use OR logic
+      if (filters[filter.column]) {
+        // If already exists, convert to array or add to existing array
+        if (Array.isArray(filters[filter.column])) {
+          filters[filter.column].push(rule);
+        } else {
+          filters[filter.column] = [filters[filter.column], rule];
+        }
+      } else {
+        filters[filter.column] = rule;
+      }
     });
 
     if (simpleFilters.textSearch) {
