@@ -8,6 +8,8 @@ import pandas as pd
 from app.services.parser import parse_csv, parse_json, parse_excel, parse_markdown
 from app.services.profiler import generate_profile_html, get_profile_summary
 from app.services.normalization import standardize_columns, normalize_types
+from app.services.type_enforcement import enforce_types, validate_ranges, detect_column_types
+from app.services.missing_data import handle_missing_data, analyze_missing_data, get_missing_data_summary
 from app.services.filtering import apply_filters
 from app.services.noise import remove_duplicates, remove_outliers
 from app.services.validation import validate_schema, get_validation_errors
@@ -17,18 +19,20 @@ from app.utils.logger import logger
 class ProcessingPipeline:
     """
     Orchestrates the full data processing workflow
-    11-step pipeline:
+    Enhanced 13-step pipeline:
     1. Upload & Create Job
     2. Parse input file
     3. Profile raw data (HTML → Gemini → Markdown)
     4. Normalize data types and columns
-    5. Apply filters
-    6. Remove duplicates and outliers
-    7. Validate results (with SSE error streaming)
-    8. Profile clean data (HTML → Gemini → Markdown)
-    9. Convert/Vectorize data
-    10. Save outputs and generate reports
-    11. Complete with manifest
+    5. Enforce data types (new: ensure correct types for all columns)
+    6. Handle missing data (new: fill, drop, or flag missing values)
+    7. Apply filters
+    8. Remove duplicates and outliers
+    9. Validate results (with SSE error streaming)
+    10. Profile clean data (HTML → Gemini → Markdown)
+    11. Convert/Vectorize data
+    12. Save outputs and generate reports
+    13. Complete with manifest
     """
     
     def __init__(self):
@@ -114,6 +118,76 @@ class ProcessingPipeline:
             logger.info(f"Normalization completed. Columns renamed: {columns_renamed}/{len(df.columns)}")
             logger.info(f"Column names: {list(df.columns)}")
             await asyncio.sleep(0)
+            
+            # ============ STEP 3.5: Type Enforcement (27% progress) ============
+            if config.get("enforce_types", True):
+                if progress_callback:
+                    progress_callback(0.27)
+                logger.info("STEP 3.5: Enforcing data types")
+                
+                type_map = config.get("type_map")
+                auto_detect = config.get("auto_detect_types", True)
+                
+                df, type_report = enforce_types(df, type_map=type_map, auto_detect=auto_detect)
+                logger.info(f"Type enforcement completed. Columns enforced: {type_report['columns_enforced']}")
+                
+                if type_report['errors']:
+                    result["errors"].extend([f"Type enforcement: {err}" for err in type_report['errors']])
+                
+                # Add to result metadata
+                result["metadata"]["type_enforcement"] = type_report
+                
+                # Validate ranges if provided
+                range_rules = config.get("range_rules")
+                if range_rules:
+                    df, range_violations = validate_ranges(df, range_rules)
+                    if range_violations:
+                        logger.warning(f"Range validation found {len(range_violations)} violations")
+                        result["metadata"]["range_violations"] = range_violations
+                
+                await asyncio.sleep(0)
+            
+            # ============ STEP 3.7: Missing Data Handling (30% progress) ============
+            if config.get("handle_missing_data", True):
+                if progress_callback:
+                    progress_callback(0.30)
+                logger.info("STEP 3.7: Handling missing data")
+                
+                # First, analyze missing data
+                missing_analysis = analyze_missing_data(df)
+                logger.info(f"Missing data analysis: {missing_analysis['total_missing']} missing values")
+                
+                if missing_analysis['total_missing'] > 0:
+                    missing_summary = get_missing_data_summary(df)
+                    logger.info(f"\n{missing_summary}")
+                    
+                    # Handle missing data
+                    strategy = config.get("missing_data_strategy")
+                    default_strategy = config.get("default_missing_strategy", "fill_mean")
+                    flag_missing = config.get("flag_missing_data", False)
+                    
+                    # If flagging is requested, add 'flag' to the strategy
+                    if flag_missing and strategy:
+                        for col in missing_analysis['columns'].keys():
+                            if col not in strategy:
+                                strategy[col] = 'flag'
+                    
+                    df, missing_report = handle_missing_data(
+                        df,
+                        strategy=strategy,
+                        default_strategy=default_strategy
+                    )
+                    
+                    logger.info(f"Missing data handled. Columns processed: {missing_report['columns_processed']}")
+                    logger.info(f"Rows dropped: {missing_report['rows_dropped']}, Columns dropped: {missing_report['columns_dropped']}")
+                    
+                    # Add to result
+                    result["metadata"]["missing_data_analysis"] = missing_analysis
+                    result["metadata"]["missing_data_handling"] = missing_report
+                else:
+                    logger.info("No missing data detected - skipping missing data handling")
+                
+                await asyncio.sleep(0)
             
             # ============ STEP 4: Apply filters (40% progress) ============
             if progress_callback:
@@ -281,6 +355,8 @@ class ProcessingPipeline:
                 "columns": len(df.columns),
                 "columns_renamed": columns_renamed,
                 "data_normalized": True,
+                "types_enforced": result["metadata"].get("type_enforcement", {}).get("columns_enforced", 0),
+                "missing_data_handled": result["metadata"].get("missing_data_handling", {}).get("columns_processed", 0),
                 "output_format": output_format,
                 "processing_time_seconds": round(processing_time, 2),
                 "error_count": len(result["errors"])
@@ -293,6 +369,7 @@ class ProcessingPipeline:
                 progress_callback(1.0)
             
             logger.info(f"Enhanced pipeline completed successfully. Job: {job_id}. Time: {processing_time:.2f}s")
+            logger.info(f"Summary: Types enforced on {result['summary']['types_enforced']} columns, Missing data handled for {result['summary']['missing_data_handled']} columns")
             
         except Exception as e:
             result["status"] = "failed"
