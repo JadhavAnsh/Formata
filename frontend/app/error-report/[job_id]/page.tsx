@@ -32,15 +32,23 @@ export default function ErrorReportPage({ params }: ErrorReportPageProps) {
     return () => observer.disconnect();
   }, []);
 
-  useEffect(() => {
-    setIsIframeLoading(true);
-  }, [jobId, theme]);
-
   const iframeSrc = useMemo(() => {
     if (!jobId) return null;
     const searchParams = new URLSearchParams({ theme });
     return `/error-report/${jobId}/file?${searchParams.toString()}`;
   }, [jobId, theme]);
+
+  const iframeKey = useMemo(() => {
+    return iframeSrc || '';
+  }, [iframeSrc]);
+
+  const handleIframeLoad = () => {
+    setIsIframeLoading(false);
+  };
+
+  const handleIframeStart = () => {
+    setIsIframeLoading(true);
+  };
 
   if (!jobId) {
     return (
@@ -83,11 +91,13 @@ export default function ErrorReportPage({ params }: ErrorReportPageProps) {
           )}
           {iframeSrc && (
             <iframe
+              key={iframeKey}
               title="Error report"
               src={iframeSrc}
               className="w-full h-[75vh]"
               sandbox="allow-scripts allow-same-origin"
-              onLoad={() => setIsIframeLoading(false)}
+              onLoadStart={handleIframeStart}
+              onLoad={handleIframeLoad}
             />
           )}
         </div>
