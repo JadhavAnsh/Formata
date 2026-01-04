@@ -1,20 +1,14 @@
-'use client';
-
-import { useEffect, useState } from 'react';
-
 import { ErrorTable } from '@/components/ErrorTable';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { useResult } from '@/hooks/useResult';
-import { resultService } from '@/services/result.service';
 import { Download, FileText, RotateCcw } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { headers } from 'next/headers';
 
 interface ResultPageProps {
-  params: Promise<{
+  params: {
     job_id: string;
-  }>;
+  };
 }
 
 function clampToPercent(value: number) {
@@ -22,27 +16,69 @@ function clampToPercent(value: number) {
   return Math.max(0, Math.min(100, value));
 }
 
-export default function ResultPage({ params }: ResultPageProps) {
-  const [job_id, setjob_id] = useState<string | null>(null);
-  const router = useRouter();
+async function getApiBaseUrl() {
+  const fromEnv = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
+  if (fromEnv.startsWith('http://') || fromEnv.startsWith('https://')) return fromEnv;
 
-  useEffect(() => {
-    params.then((p) => setjob_id(p.job_id));
-  }, [params]);
+  const h = await headers();
+  const proto = h.get('x-forwarded-proto') || 'http';
+  const host = h.get('x-forwarded-host') || h.get('host') || 'localhost:3000';
+  const origin = `${proto}://${host}`;
 
-  const { result, isLoading, error } = useResult({
-    jobId: job_id,
-    enabled: !!job_id,
+  if (!fromEnv) return origin;
+  return `${origin}${fromEnv.startsWith('/') ? '' : '/'}${fromEnv}`;
+}
+
+async function getResults(jobId: string) {
+  const apiBaseUrl = await getApiBaseUrl();
+  const apiKey = process.env.NEXT_PUBLIC_API_KEY || '';
+
+  const response = await fetch(`${apiBaseUrl}/status/${jobId}`, {
+    headers: {
+      ...(apiKey && { 'X-API-Key': apiKey }),
+    },
+    cache: 'no-store',
   });
 
-  if (!job_id) {
-    return (
-      <div className="container mx-auto mt-16 sm:mt-20 px-4 sm:px-6 max-w-6xl">
-        <div className="flex items-center justify-center p-8">
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch results: ${response.statusText}`);
+  }
+
+  const job = (await response.json()) as any;
+  const resultData = job.result || job.metadata?.result;
+
+  if (!resultData) {
+    throw new Error('Result data not available yet. Job may still be processing.');
+  }
+
+  return {
+    jobId: job.job_id || job.id || jobId,
+    beforeData: resultData.beforeData || resultData.before_data,
+    afterData: resultData.afterData || resultData.after_data || resultData.data,
+    errors: Array.isArray(resultData.errors)
+      ? resultData.errors.map((err: any) => ({
+          row: err.row || err.row_index || 0,
+          column: err.column || err.column_name || '',
+          message: err.message || err.error || String(err),
+          value: err.value,
+          code: err.code || 'VALIDATION_ERROR',
+          severity: err.severity || 'error',
+        }))
+      : resultData.errors,
+    metadata: resultData.metadata || job.metadata,
+  };
+}
+
+export default async function ResultPage({ params }: ResultPageProps) {
+  const job_id = params.job_id;
+
+  let result: Awaited<ReturnType<typeof getResults>> | null = null;
+  let errorMessage: string | null = null;
+
+  try {
+    result = await getResults(job_id);
+  } catch (err) {
+    errorMessage = err instanceof Error ? err.message : 'Failed to load results';
   }
 
   const totalRows =
@@ -71,9 +107,7 @@ export default function ResultPage({ params }: ResultPageProps) {
               </div>
               <div>
                 <h1 className="text-2xl sm:text-3xl font-semibold leading-tight">Processing Complete</h1>
-                <p className="text-sm sm:text-base text-muted-foreground">
-                  Your dataset is now AI-ready and structured.
-                </p>
+                <p className="text-sm sm:text-base text-muted-foreground">Your dataset is now AI-ready and structured.</p>
               </div>
             </div>
 
@@ -82,52 +116,37 @@ export default function ResultPage({ params }: ResultPageProps) {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3">
-              <Button
-                className="w-full sm:w-auto sm:flex-1"
-                onClick={() => {
-                  if (!job_id) return;
-                  resultService.downloadResult(job_id).catch((err) => {
-                    console.error('Download failed:', err);
-                  });
-                }}
-              >
-                <Download className="mr-2 size-4" />
-                Download Clean Dataset
+              <Button className="w-full sm:w-auto sm:flex-1" asChild>
+                <a href={`/result/${job_id}/download`}>
+                  <Download className="mr-2 size-4" />
+                  Download Clean Dataset
+                </a>
               </Button>
-              <Button
-                variant="outline"
-                className="w-full sm:w-auto sm:flex-1"
-                disabled={!result?.errors?.length}
-                onClick={() => {
-                  if (!job_id) return;
-                  router.push(`/error-report/${job_id}`);
-                }}
-              >
-                <FileText className="mr-2 size-4" />
-                View Error Report
-              </Button>
+
+              {errorCount > 0 ? (
+                <Button variant="outline" className="w-full sm:w-auto sm:flex-1" asChild>
+                  <Link href={`/error-report/${job_id}`}>
+                    <FileText className="mr-2 size-4" />
+                    View Error Report
+                  </Link>
+                </Button>
+              ) : (
+                <Button variant="outline" className="w-full sm:w-auto sm:flex-1" disabled>
+                  <FileText className="mr-2 size-4" />
+                  View Error Report
+                </Button>
+              )}
             </div>
 
-            <Button
-              variant="secondary"
-              className="w-full mt-3"
-              onClick={() => {
-                if (!job_id) return;
-                resultService.downloadVectorPkl(job_id).catch((err) => {
-                  console.error('Download failed:', err);
-                });
-              }}
-            >
-              <Download className="mr-2 size-4" />
-              Download Vector .pkl
+            <Button variant="secondary" className="w-full mt-3" asChild>
+              <a href={`/result/${job_id}/vectors`}>
+                <Download className="mr-2 size-4" />
+                Download Vector .pkl
+              </a>
             </Button>
 
-            {isLoading && <p className="text-muted-foreground mt-6">Loading results...</p>}
-
-            {error && (
-              <div className="mt-6 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
-                {error.message}
-              </div>
+            {errorMessage && (
+              <div className="mt-6 p-3 bg-destructive/10 text-destructive rounded-md text-sm">{errorMessage}</div>
             )}
           </div>
 
@@ -195,38 +214,6 @@ export default function ResultPage({ params }: ResultPageProps) {
               Process another file
             </Link>
           </div>
-
-          {/* {result && (
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Card>
-                <CardContent className="p-0">
-                  <div className="px-4 sm:px-6 py-4 border-b bg-muted/30 flex items-center justify-between">
-                    <div className="text-sm font-semibold text-rose-300/90">BEFORE: RAW DATA</div>
-                    <div className="text-xs text-muted-foreground">
-                      {result.beforeData?.rows?.length ?? 0} rows
-                    </div>
-                  </div>
-                  <div className="p-4 sm:p-6">
-                    {result.beforeData ? <ResultTable beforeData={result.beforeData.rows} /> : <div className="text-muted-foreground">No raw data</div>}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-0">
-                  <div className="px-4 sm:px-6 py-4 border-b bg-muted/30 flex items-center justify-between">
-                    <div className="text-sm font-semibold text-emerald-300/90">AFTER: STRUCTURED DATA</div>
-                    <div className="text-xs text-muted-foreground">
-                      {result.afterData?.rows?.length ?? 0} rows
-                    </div>
-                  </div>
-                  <div className="p-4 sm:p-6">
-                    {result.afterData ? <ResultTable afterData={result.afterData.rows} /> : <div className="text-muted-foreground">No structured data</div>}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )} */}
 
           {result?.errors?.length ? (
             <div className="mt-8">

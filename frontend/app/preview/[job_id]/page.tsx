@@ -11,14 +11,14 @@ import { ingestService } from '@/services/ingest.service';
 import { processService } from '@/services/process.service';
 
 interface PreviewPageProps {
-  params: Promise<{
+  params: {
     job_id: string;
-  }>;
+  };
 }
 
 export default function PreviewPage({ params }: PreviewPageProps) {
   const router = useRouter();
-  const [job_id, setjob_id] = useState<string | null>(null);
+  const job_id = params.job_id;
   const [data, setData] = useState<Array<Record<string, any>>>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [columnTypes, setColumnTypes] = useState<Record<string, 'text' | 'numeric' | 'datetime' | 'boolean'>>({});
@@ -30,10 +30,6 @@ export default function PreviewPage({ params }: PreviewPageProps) {
   const [error, setError] = useState<Error | null>(null);
   const [appliedFilters, setAppliedFilters] = useState<FilterParams>({});
   const [originalData, setOriginalData] = useState<Array<Record<string, any>>>([]);
-
-  useEffect(() => {
-    params.then((p) => setjob_id(p.job_id));
-  }, [params]);
 
   useEffect(() => {
     if (!job_id) return;

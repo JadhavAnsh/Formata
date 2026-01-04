@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ProgressBar } from '@/components/ProgressBar';
 import { useJobStatus } from '@/hooks/useJobStatus';
@@ -8,47 +8,24 @@ import { processService } from '@/services/process.service';
 import type { FilterParams } from '@/services/preview.service';
 
 interface ProcessPageProps {
-  params: Promise<{
+  params: {
     job_id: string;
-  }>;
+  };
 }
 
 export default function ProcessPage({ params }: ProcessPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [job_id, setjob_id] = useState<string | null>(null);
-  const [filters, setFilters] = useState<FilterParams | null>(null);
+  const job_id = params.job_id;
   const [processingStarted, setProcessingStarted] = useState(false);
-  const [paramsError, setParamsError] = useState<string | null>(null);
 
-  useEffect(() => {
-    params
-      .then((p) => {
-        const id = p.job_id;
-        console.log('Process page - Parsed job_id from params:', id);
-        if (!id) {
-          setParamsError('Job ID not found in URL');
-          return;
-        }
-        setjob_id(id);
-        setParamsError(null);
-      })
-      .catch((err) => {
-        console.error('Error parsing params:', err);
-        setParamsError('Failed to parse job ID from URL');
-      });
-  }, [params]);
-
-  useEffect(() => {
-    // Extract filters from URL params
+  const filters: FilterParams | null = useMemo(() => {
     const filtersParam = searchParams.get('filters');
-    if (filtersParam) {
-      try {
-        const parsedFilters = JSON.parse(filtersParam);
-        setFilters(parsedFilters);
-      } catch (e) {
-        console.error('Failed to parse filters from URL:', e);
-      }
+    if (!filtersParam) return null;
+    try {
+      return JSON.parse(filtersParam);
+    } catch {
+      return null;
     }
   }, [searchParams]);
 
@@ -92,25 +69,12 @@ export default function ProcessPage({ params }: ProcessPageProps) {
   const progress = job?.progress !== undefined ? job.progress : 0;
   const status = job?.status || 'pending';
 
-  if (paramsError) {
+  if (!job_id) {
     return (
       <div className="container mx-auto mt-16 sm:mt-20 px-4 sm:px-6 max-w-4xl">
         <div className="p-4 bg-destructive/10 text-destructive rounded-md">
           <h2 className="text-lg font-semibold mb-2">Error</h2>
-          <p>{paramsError}</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!job_id) {
-    return (
-      <div className="container mx-auto mt-16 sm:mt-20 px-4 sm:px-6 max-w-4xl">
-        <div className="flex items-center justify-center p-8">
-          <div className="flex items-center gap-2">
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-            <p className="text-muted-foreground">Loading job information...</p>
-          </div>
+          <p>Job ID not found in URL</p>
         </div>
       </div>
     );
