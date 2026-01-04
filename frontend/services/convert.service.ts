@@ -1,4 +1,4 @@
-import { apiUpload, apiRequest } from './api';
+import { apiUpload } from './api';
 
 export interface ConvertResult {
   data: string;
