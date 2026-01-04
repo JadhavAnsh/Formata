@@ -74,7 +74,8 @@ def remove_outliers(df: pd.DataFrame, columns: list = None) -> pd.DataFrame:
             series = pd.to_numeric(cleaned_df[col], errors="coerce")
 
             # Skip sparse or constant columns
-            if series.notna().sum() < 10 or series.nunique(dropna=True) <= 2:
+            # Need at least 5 values for meaningful IQR calculation
+            if series.notna().sum() < 5 or series.nunique(dropna=True) <= 2:
                 continue
 
             q1 = series.quantile(0.25)

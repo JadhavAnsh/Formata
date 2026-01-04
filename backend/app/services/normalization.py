@@ -54,16 +54,18 @@ def normalize_types(df: pd.DataFrame) -> pd.DataFrame:
 
             # Normalize empty-like values early
             series = series.replace(
-                {
-                    "": None,
-                    " ": None,
-                    "null": None,
-                    "none": None,
-                    "nan": None,
-                    "na": None,
-                    "n/a": None,
-                    "undefined": None,
-                }
+                [
+                    "",
+                    " ",
+                    "null",
+                    "none",
+                    "nan",
+                    "na",
+                    "n/a",
+                    "N/A",
+                    "undefined",
+                ],
+                None
             )
 
             # ---------- BOOLEAN ----------
@@ -91,7 +93,7 @@ def normalize_types(df: pd.DataFrame) -> pd.DataFrame:
 
             # ---------- DATETIME ----------
             datetime = pd.to_datetime(
-                series, errors="coerce", infer_datetime_format=True
+                series, errors="coerce"
             )
             if datetime.notna().mean() > 0.7:
                 df[col] = datetime

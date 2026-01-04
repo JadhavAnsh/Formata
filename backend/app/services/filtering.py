@@ -21,6 +21,14 @@ def _detect_column_type(series: pd.Series) -> str:
 
     if pd.api.types.is_numeric_dtype(series):
         return "numeric"
+    
+    # Try to detect if string values can be converted to numeric
+    try:
+        numeric = pd.to_numeric(series, errors="coerce")
+        if numeric.notna().sum() > len(series) * 0.6:
+            return "numeric"
+    except Exception:
+        pass
 
     try:
         parsed = pd.to_datetime(series, errors="coerce")
@@ -134,15 +142,25 @@ def apply_filters(df: pd.DataFrame, filters: Dict[str, Any]) -> pd.DataFrame:
             if col_type == "numeric":
                 s = pd.to_numeric(series, errors="coerce")
 
-                if op in {">", ">=", "<", "<="}:
+                if op == ">":
                     v = pd.to_numeric(rule.get("value"), errors="coerce")
                     if not pd.isna(v):
-                        filtered_df = filtered_df[eval(f"s {op} v")]
-
+                        filtered_df = filtered_df[s > v]
+                elif op == ">=":
+                    v = pd.to_numeric(rule.get("value"), errors="coerce")
+                    if not pd.isna(v):
+                        filtered_df = filtered_df[s >= v]
+                elif op == "<":
+                    v = pd.to_numeric(rule.get("value"), errors="coerce")
+                    if not pd.isna(v):
+                        filtered_df = filtered_df[s < v]
+                elif op == "<=":
+                    v = pd.to_numeric(rule.get("value"), errors="coerce")
+                    if not pd.isna(v):
+                        filtered_df = filtered_df[s <= v]
                 elif op in {"equals", "=="}:
                     v = pd.to_numeric(rule.get("value"), errors="coerce")
                     filtered_df = filtered_df[s == v]
-
                 elif op == "between":
                     min_v = pd.to_numeric(rule.get("min"), errors="coerce")
                     max_v = pd.to_numeric(rule.get("max"), errors="coerce")

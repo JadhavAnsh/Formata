@@ -23,7 +23,7 @@ def parse_csv(file_path: str) -> pd.DataFrame:
         df.dropna(how="all", inplace=True)
 
         # Trim whitespace from all cells
-        df = df.applymap(
+        df = df.map(
             lambda x: x.strip() if isinstance(x, str) else x
         )
 
@@ -87,7 +87,7 @@ def parse_excel(file_path: str) -> pd.DataFrame:
             df.dropna(how="all", inplace=True)
 
             # Trim whitespace
-            df = df.applymap(
+            df = df.map(
                 lambda x: x.strip() if isinstance(x, str) else x
             )
 

@@ -81,43 +81,41 @@ def json_to_csv(json_data: Dict[str, Any], output_path: str) -> None:
     if not json_data:
         raise ValueError("Empty JSON data provided")
 
-    try:
-        # Extract records safely
-        if isinstance(json_data, dict):
-            records = json_data.get("records", [])
-        elif isinstance(json_data, list):
-            records = json_data
-        else:
-            raise ValueError("Invalid JSON structure")
+    # Extract records safely
+    if isinstance(json_data, dict):
+        records = json_data.get("records", [])
+    elif isinstance(json_data, list):
+        records = json_data
+    else:
+        raise ValueError("Invalid JSON structure")
 
-        if not records:
-            raise ValueError("No records available for CSV conversion")
+    if not records:
+        raise ValueError("No records available for CSV conversion")
 
-        # Flatten nested JSON
-        df = pd.json_normalize(records, sep="_", max_level=10)
+    # Flatten nested JSON
+    df = pd.json_normalize(records, sep="_", max_level=10)
 
-        # Normalize column names
-        df.columns = (
-            df.columns.astype(str)
-            .str.strip()
-            .str.lower()
-            .str.replace(r"[^\w]+", "_", regex=True)
-            .str.strip("_")
-        )
+    # Normalize column names
+    df.columns = (
+        df.columns.astype(str)
+        .str.strip()
+        .str.lower()
+        .str.replace(r"[^\w]+", "_", regex=True)
+        .str.strip("_")
+    )
 
-        # Normalize cell values
-        df = df.applymap(
-            lambda x: None
-            if str(x).strip().lower()
-            in {"", "none", "null", "nan", "na", "n/a", "undefined"}
-            else x
-        )
+    # Normalize cell values
+    df = df.map(
+        lambda x: None
+        if str(x).strip().lower()
+        in {"", "none", "null", "nan", "na", "n/a", "undefined"}
+        else x
+    )
 
-        # Ensure output directory exists
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    # Ensure output directory exists
+    output_dir = os.path.dirname(output_path)
+    if output_dir:  # Check if there's a directory component
+        os.makedirs(output_dir, exist_ok=True)
 
-        # Write CSV
-        df.to_csv(output_path, index=False)
-
-    except Exception as e:
-        raise RuntimeError(f"JSON → CSV conversion failed: {str(e)}")
+    # Write CSV
+    df.to_csv(output_path, index=False)
