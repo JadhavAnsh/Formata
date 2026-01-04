@@ -261,6 +261,119 @@
       ]
     },
     {
+      "name": "Vector Generation (LLM Integration)",
+      "item": [
+        {
+          "name": "Generate Vectors",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": \"hybrid\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/vectors/{{job_id}}/generate",
+              "host": ["{{base_url}}"],
+              "path": ["vectors", "{{job_id}}", "generate"]
+            },
+            "description": "Generate vector embeddings from processed data\n\n**Methods:**\n- `hybrid` (recommended): Text embeddings + normalized numeric + one-hot categorical\n- `text_only`: All columns as text with 512-dim embeddings\n- `numeric`: Fast, minimal vectorization (numeric only)\n\n**Response includes:**\n- vector_shape: [n_samples, n_features]\n- n_samples: Number of rows\n- n_features: Total dimensions\n- method: Vectorization method used\n- download_formats: [\"pkl\", \"h5\"]\n\n**Status Codes:**\n- 200: Vectors generated successfully\n- 404: Job not found\n- 400: Job not completed or invalid method"
+          },
+          "response": []
+        },
+        {
+          "name": "Download Vectors (.pkl)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/vectors/{{job_id}}/download?format=pkl",
+              "host": ["{{base_url}}"],
+              "path": ["vectors", "{{job_id}}", "download"],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "pkl",
+                  "description": "Pickle format - smaller, Python-native"
+                }
+              ]
+            },
+            "description": "Download vectors as Python pickle file (.pkl)\n\n**Format: .pkl**\n- Best for: Python projects, prototyping\n- Size: Smaller (8-80 MB for typical datasets)\n- Speed: Faster read/write\n- Language: Python only\n\n**Usage:**\n```python\nimport pickle\nwith open('vectors.pkl', 'rb') as f:\n    data = pickle.load(f)\n    vectors = data['vectors']\n    metadata = data['metadata']\n```\n\n**Status Codes:**\n- 200: File download starts\n- 404: Job not found\n- 400: Job not completed or invalid format"
+          },
+          "response": []
+        },
+        {
+          "name": "Download Vectors (.h5)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/vectors/{{job_id}}/download?format=h5",
+              "host": ["{{base_url}}"],
+              "path": ["vectors", "{{job_id}}", "download"],
+              "query": [
+                {
+                  "key": "format",
+                  "value": "h5",
+                  "description": "HDF5 format - compressed, cross-platform"
+                }
+              ]
+            },
+            "description": "Download vectors as HDF5 file (.h5)\n\n**Format: .h5**\n- Best for: Large datasets, production systems\n- Size: Compressed (2-20 MB with gzip)\n- Speed: Slower but memory efficient\n- Language: Python, R, Java, JavaScript, C++\n- Supports: Chunked reading for large files\n\n**Usage:**\n```python\nimport h5py\nwith h5py.File('vectors.h5', 'r') as f:\n    vectors = f['vectors'][:]\n    # Or read in chunks:\n    batch = f['vectors'][0:1000]\n```\n\n**Status Codes:**\n- 200: File download starts\n- 404: Job not found\n- 400: Job not completed or invalid format"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Vector Info",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/vectors/{{job_id}}/info",
+              "host": ["{{base_url}}"],
+              "path": ["vectors", "{{job_id}}", "info"]
+            },
+            "description": "Get vector metadata without downloading\n\n**Returns:**\n- vector_info:\n  - shape: [n_samples, n_features]\n  - n_samples: Number of rows\n  - n_features: Total dimensions\n  - method: Vectorization method\n  - original_columns: Original column names\n  - feature_names: Generated feature names (first 20)\n- download_formats: Available formats\n- supported_methods: Available vectorization methods\n\n**Use this to:**\n- Check vector dimensions before downloading\n- Verify column mappings\n- Decide which format to download\n\n**Status Codes:**\n- 200: Info retrieved successfully\n- 404: Job not found\n- 400: Job not completed"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Job Management",
       "item": [
         {

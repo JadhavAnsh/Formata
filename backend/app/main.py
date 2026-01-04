@@ -18,7 +18,7 @@ app.add_middleware(
 )
 
 # Import routers
-from app.api import ingest, process, status, result, errors, convert, jobs, profile
+from app.api import ingest, process, status, result, errors, convert, jobs, profile, vectors
 
 # Base endpoint (NO authentication required)
 @app.get("/")
@@ -41,3 +41,4 @@ app.include_router(errors, dependencies=[Depends(verify_api_key)])
 app.include_router(convert, dependencies=[Depends(verify_api_key)])
 app.include_router(jobs, dependencies=[Depends(verify_api_key)])
 app.include_router(profile, dependencies=[Depends(verify_api_key)])
+app.include_router(vectors, dependencies=[Depends(verify_api_key)])
