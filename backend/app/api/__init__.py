@@ -7,3 +7,4 @@ from .ingest import router as ingest
 from .errors import router as errors
 from .convert import router as convert
 from .profile import router as profile
+from .vectors import router as vectors
