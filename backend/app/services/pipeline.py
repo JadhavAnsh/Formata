@@ -269,6 +269,7 @@ class ProcessingPipeline:
             
             # Schema validation (if rules provided)
             validation_rules = config.get("validation_rules")
+            schema_errors = []
             if validation_rules:
                 schema_errors = get_validation_errors(
                     {"records": df.to_dict(orient='records')},
@@ -277,6 +278,25 @@ class ProcessingPipeline:
                 if schema_errors:
                     result["errors"].extend(schema_errors)
                     logger.warning(f"Schema validation found {len(schema_errors)} issues")
+            
+            # Calculate comprehensive data quality score
+            logger.info("Calculating multifactor data quality score")
+            from app.services.validation import calculate_data_quality_score
+            
+            quality_score = calculate_data_quality_score(
+                df=df,
+                schema=validation_rules,
+                missing_data_report=result["metadata"].get("missing_data_analysis"),
+                type_enforcement_report=result["metadata"].get("type_enforcement"),
+                validation_errors=schema_errors if schema_errors else None
+            )
+            
+            result["metadata"]["quality_score"] = quality_score
+            logger.info(f"Data Quality Score: {quality_score['overall_score']}/100 (Grade: {quality_score['grade']})")
+            logger.info(f"  - Completeness: {quality_score['completeness_score']}/100")
+            logger.info(f"  - Validity: {quality_score['validity_score']}/100")
+            logger.info(f"  - Consistency: {quality_score['consistency_score']}/100")
+            logger.info(f"  - Accuracy: {quality_score['accuracy_score']}/100")
             
             await asyncio.sleep(0)
             
@@ -359,7 +379,8 @@ class ProcessingPipeline:
                 "missing_data_handled": result["metadata"].get("missing_data_handling", {}).get("columns_processed", 0),
                 "output_format": output_format,
                 "processing_time_seconds": round(processing_time, 2),
-                "error_count": len(result["errors"])
+                "error_count": len(result["errors"]),
+                "quality_score": result["metadata"].get("quality_score", {})
             }
             
             result["status"] = "completed"
