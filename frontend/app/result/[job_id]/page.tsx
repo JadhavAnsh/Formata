@@ -122,6 +122,20 @@ export default function ResultPage({ params }: ResultPageProps) {
               Download Vector .pkl
             </Button>
 
+            <Button
+              variant="secondary"
+              className="w-full mt-3"
+              onClick={() => {
+                if (!job_id) return;
+                resultService.downloadVectorH5(job_id).catch((err) => {
+                  console.error('Download failed:', err);
+                });
+              }}
+            >
+              <Download className="mr-2 size-4" />
+              Download Vector .h5
+            </Button>
+
             {isLoading && <p className="text-muted-foreground mt-6">Loading results...</p>}
 
             {error && (

@@ -1,14 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { PreviewTable } from '@/components/PreviewTable';
+import { fileCache } from '@/app/ingest/page';
 import { FilterForm } from '@/components/FilterForm';
+import { PreviewTable } from '@/components/PreviewTable';
 import { Button } from '@/components/ui/button';
-import type { FilterParams } from '@/services/preview.service';
-import { applyFiltersClientSide } from '@/utils/fileParser';
 import { ingestService } from '@/services/ingest.service';
+import type { FilterParams } from '@/services/preview.service';
 import { processService } from '@/services/process.service';
+import { applyFiltersClientSide } from '@/utils/fileParser';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 interface PreviewPageProps {
   params: Promise<{
@@ -137,23 +138,12 @@ export default function PreviewPage({ params }: PreviewPageProps) {
     setError(null);
     
     try {
-      // Reconstruct the file from sessionStorage
-      const fileDataBase64 = sessionStorage.getItem(`file_data_${job_id}`);
-      const fileName = sessionStorage.getItem(`file_name_${job_id}`);
-      const fileType = sessionStorage.getItem(`file_type_${job_id}`);
+      // Get file from memory cache instead of sessionStorage
+      const file = fileCache.get(job_id);
       
-      if (!fileDataBase64 || !fileName) {
+      if (!file) {
         throw new Error('File data not found. Please upload the file again.');
       }
-      
-      // Convert base64 back to File object
-      const binaryString = atob(fileDataBase64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      const blob = new Blob([bytes], { type: fileType || 'application/octet-stream' });
-      const file = new File([blob], fileName, { type: fileType || 'application/octet-stream' });
       
       // Call ingest API with file and filters
       const ingestResponse = await ingestService.uploadFile(file, {

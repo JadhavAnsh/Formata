@@ -123,6 +123,43 @@ export const resultService = {
     URL.revokeObjectURL(downloadUrl);
   },
 
+    async downloadVectorH5(jobId: string): Promise<void> {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
+    const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
+    
+    const url = `${API_BASE_URL}/vectors/${jobId}/download?format=h5`;
+    
+    const response = await fetch(url, {
+      headers: {
+        ...(API_KEY && { 'X-API-Key': API_KEY }),
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to download vector file: ${response.statusText}`);
+    }
+    
+    // Get filename from Content-Disposition header if available
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let filename = `vectors_${jobId}.h5`;
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename="?([^"\n]+)"?/);
+      if (match) {
+        filename = match[1];
+      }
+    }
+    
+    const blob = await response.blob();
+    const downloadUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(downloadUrl);
+  },
+
   /**
    * Get processing results for a job
    * Results are stored in the job's result field from the status endpoint
