@@ -1,5 +1,35 @@
 import pandas as pd
 import re
+import warnings
+
+
+def _parse_datetime(series: pd.Series) -> pd.Series:
+    """Parse datetimes without noisy warnings by trying common formats first."""
+    if series is None:
+        return series
+
+    common_formats = [
+        "%Y-%m-%d",
+        "%m/%d/%Y",
+        "%d/%m/%Y",
+        "%Y/%m/%d",
+        "%Y-%m-%d %H:%M:%S",
+        "%m/%d/%Y %H:%M",
+    ]
+
+    for fmt in common_formats:
+        parsed = pd.to_datetime(series, errors="coerce", format=fmt)
+        if parsed.notna().mean() > 0.7:
+            return parsed
+
+    # Fallback: allow mixed formats but silence the pandas warning
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="Could not infer format",
+            category=UserWarning,
+        )
+        return pd.to_datetime(series, errors="coerce", infer_datetime_format=True)
 
 
 def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -92,9 +122,7 @@ def normalize_types(df: pd.DataFrame) -> pd.DataFrame:
                 continue
 
             # ---------- DATETIME ----------
-            datetime = pd.to_datetime(
-                series, errors="coerce"
-            )
+            datetime = _parse_datetime(series)
             if datetime.notna().mean() > 0.7:
                 df[col] = datetime
                 continue

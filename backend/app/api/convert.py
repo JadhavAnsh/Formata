@@ -1,6 +1,7 @@
 # /convert endpoint
 # Format conversion utility
 from fastapi import APIRouter, HTTPException, status, UploadFile, File
+from fastapi.responses import Response, FileResponse
 from pydantic import BaseModel
 from typing import Dict, Any, List
 import io
@@ -28,15 +29,31 @@ class JsonToCSVRequest(BaseModel):
 
 
 @router.post("/json-to-csv")
-async def convert_json_to_csv(request: JsonToCSVRequest) -> Dict[str, Any]:
+async def convert_json_to_csv(file: UploadFile = File(...)):
     """
     Convert JSON to CSV format
-    - Accepts JSON data (dict with records or list of objects)
-    - Returns CSV as string
+    - Accepts JSON file upload
+    - Returns CSV file directly for download
     - Handles nested JSON flattening
     """
     try:
-        logger.info("Converting JSON to CSV")
+        if not file.filename.endswith('.json'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File must be a JSON file"
+            )
+        
+        logger.info(f"Converting JSON to CSV: {file.filename}")
+        
+        # Read and parse JSON file
+        content = await file.read()
+        try:
+            json_data = json.loads(content.decode('utf-8'))
+        except json.JSONDecodeError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid JSON file: {str(e)}"
+            )
         
         # Create temporary file for CSV output
         temp_fd, temp_path = tempfile.mkstemp(suffix=".csv")
@@ -44,23 +61,30 @@ async def convert_json_to_csv(request: JsonToCSVRequest) -> Dict[str, Any]:
         
         try:
             # Use conversion service
-            json_to_csv(request.data, temp_path)
+            json_to_csv(json_data, temp_path)
             
             # Read CSV content
             with open(temp_path, 'r', encoding='utf-8') as f:
                 csv_content = f.read()
             
-            return {
-                "status": "success",
-                "format": "csv",
-                "content": csv_content,
-                "message": "Successfully converted JSON to CSV"
-            }
+            # Generate output filename
+            output_filename = file.filename.rsplit('.', 1)[0] + '.csv'
+            
+            # Return CSV file directly
+            return Response(
+                content=csv_content,
+                media_type="text/csv",
+                headers={
+                    "Content-Disposition": f"attachment; filename={output_filename}"
+                }
+            )
         finally:
             # Clean up temp file
             if os.path.exists(temp_path):
                 os.remove(temp_path)
                 
+    except HTTPException:
+        raise
     except ValueError as e:
         logger.error(f"Validation error in JSON to CSV: {str(e)}")
         raise HTTPException(
@@ -76,11 +100,11 @@ async def convert_json_to_csv(request: JsonToCSVRequest) -> Dict[str, Any]:
 
 
 @router.post("/csv-to-json")
-async def convert_csv_to_json(file: UploadFile = File(...)) -> Dict[str, Any]:
+async def convert_csv_to_json(file: UploadFile = File(...)):
     """
     Convert CSV to JSON format
     - Accepts CSV file upload
-    - Returns JSON with records array
+    - Returns JSON file directly for download
     - Handles type inference and normalization
     """
     try:
@@ -104,12 +128,20 @@ async def convert_csv_to_json(file: UploadFile = File(...)) -> Dict[str, Any]:
             # Use conversion service
             result = csv_to_json(temp_path)
             
-            return {
-                "status": "success",
-                "format": "json",
-                "data": result,
-                "message": "Successfully converted CSV to JSON"
-            }
+            # Convert result to JSON string
+            json_content = json.dumps(result, indent=2, ensure_ascii=False)
+            
+            # Generate output filename
+            output_filename = file.filename.rsplit('.', 1)[0] + '.json'
+            
+            # Return JSON file directly
+            return Response(
+                content=json_content,
+                media_type="application/json",
+                headers={
+                    "Content-Disposition": f"attachment; filename={output_filename}"
+                }
+            )
         finally:
             # Clean up temp file
             if os.path.exists(temp_path):

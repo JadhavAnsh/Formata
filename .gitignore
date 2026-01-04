@@ -50,3 +50,7 @@ Thumbs.db
 
 ### Project-specific generated data
 backend/app/services/data/
+
+
+###misc
+./backend/storage/*

@@ -403,7 +403,7 @@
               "host": ["{{base_url}}"],
               "path": ["convert", "csv-to-json"]
             },
-            "description": "Convert CSV file to JSON format\n\n**Accepts:** CSV file upload\n**Returns:** JSON with records array\n\nSupports:\n- Type inference and normalization\n- Nested JSON flattening\n- Proper encoding handling"
+            "description": "Convert CSV file to JSON format\n\n**Accepts:** CSV file upload\n**Returns:** JSON file download\n\nSupports:\n- Type inference and normalization\n- Nested JSON flattening\n- Proper encoding handling\n\nThe response will be a downloadable JSON file."
           },
           "response": []
         },
@@ -416,28 +416,25 @@
                 "key": "X-API-Key",
                 "value": "{{api_key}}",
                 "type": "text"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json",
-                "type": "text"
               }
             ],
             "body": {
-              "mode": "raw",
-              "raw": "{\n  \"data\": {\n    \"records\": [\n      {\n        \"name\": \"John Doe\",\n        \"age\": 30,\n        \"email\": \"john@example.com\"\n      },\n      {\n        \"name\": \"Jane Smith\",\n        \"age\": 25,\n        \"email\": \"jane@example.com\"\n      }\n    ]\n  }\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "data.json",
+                  "disabled": false
                 }
-              }
+              ]
             },
             "url": {
               "raw": "{{base_url}}/convert/json-to-csv",
               "host": ["{{base_url}}"],
               "path": ["convert", "json-to-csv"]
             },
-            "description": "Convert JSON to CSV format\n\n**Accepts:** JSON data (dict with records or list of objects)\n**Returns:** CSV as string\n\nRequest body can be:\n- {\"data\": {\"records\": [...]}} - dict with records key\n- {\"data\": [{...}, {...}]} - direct array of objects"
+            "description": "Convert JSON file to CSV format\n\n**Accepts:** JSON file upload\n**Returns:** CSV file download\n\nSupports:\n- JSON with records array: {\"records\": [{...}, {...}]}\n- Direct array of objects: [{...}, {...}]\n- Nested JSON flattening\n- Proper encoding handling\n\nThe response will be a downloadable CSV file."
           },
           "response": []
         },
