@@ -113,7 +113,7 @@ export function parseJSON(content: string): ParsedData {
       columns,
       totalRows: records.length,
     };
-  } catch (error) {
+  } catch {
     throw new Error('Failed to parse JSON file');
   }
 }

@@ -8,10 +8,7 @@ export const ingestService = {
   /**
    * Upload a file for processing
    */
-  async uploadFile(file: File, options?: {
-    filters?: Record<string, any>;
-    normalization?: Record<string, any>;
-  }): Promise<Job> {
+  async uploadFile(file: File): Promise<Job> {
     return apiUpload('/ingest', file);
   },
 };
