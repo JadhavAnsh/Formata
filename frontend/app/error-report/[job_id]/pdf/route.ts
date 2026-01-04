@@ -1,7 +1,7 @@
 import { readFile } from 'fs/promises';
 import path from 'path';
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { chromium } from 'playwright';
 
 export const runtime = 'nodejs';
@@ -78,11 +78,12 @@ async function renderPdfFromHtml(html: string, theme: 'light' | 'dark') {
   }
 }
 
-export async function GET(request: Request, { params }: { params: { job_id: string } }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ job_id: string }> }) {
+  const { job_id } = await context.params;
   const url = new URL(request.url);
   const theme = url.searchParams.get('theme') === 'dark' ? 'dark' : 'light';
 
-  const reportPath = path.join(process.cwd(), `${params.job_id}_clean_profile.html`);
+  const reportPath = path.join(process.cwd(), `${job_id}_clean_profile.html`);
   const fallbackPath = path.join(process.cwd(), 'cf61c556-961f-484d-9110-d25b651ecf67_clean_profile.html');
   const cssPath = path.join(process.cwd(), 'public', 'ydata-profile-theme-v2.css');
 
@@ -99,11 +100,12 @@ export async function GET(request: Request, { params }: { params: { job_id: stri
   html = setRootTheme(html, theme);
 
   const pdf = await renderPdfFromHtml(html, theme);
+  const pdfBytes = new Uint8Array(pdf);
 
-  return new NextResponse(pdf, {
+  return new NextResponse(pdfBytes, {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="formata-error-report-${params.job_id}.pdf"`,
+      'Content-Disposition': `attachment; filename="formata-error-report-${job_id}.pdf"`,
       'Cache-Control': 'no-store',
     },
   });
