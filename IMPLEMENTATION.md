@@ -7,16 +7,16 @@ This document serves as the technical blueprint for migrating Formata to a BaaS 
 ## 🏗 Phase 1: Authentication & User Management (Appwrite Auth)
 
 ### **Backend (FastAPI)**
-- [ ] Install `appwrite` Server SDK.
-- [ ] Create `app/guards/appwrite_auth.py` to verify JWT tokens from the frontend.
-- [ ] Replace `verify_api_key` dependency with `verify_appwrite_session`.
-- [ ] Update `JobStore` (or Repository) to associate `user_id` with every job.
+- [x] Install `appwrite` Server SDK.
+- [x] Create `app/guards/appwrite_auth.py` to verify JWT tokens from the frontend.
+- [x] Replace `verify_api_key` dependency with `verify_appwrite_session`.
+- [x] Update `JobStore` (or Repository) to associate `user_id` with every job.
 
 ### **Frontend (Next.js)**
-- [ ] Install `appwrite` Web SDK.
-- [ ] Create `lib/appwrite.ts` configuration.
-- [ ] Implement `AuthContext` for global session management.
-- [ ] Build Login and Register pages.
+- [x] Install `appwrite` Web SDK.
+- [x] Create `lib/appwrite.ts` configuration.
+- [x] Implement `AuthContext` for global session management.
+- [x] Build Login and Register pages.
 - [ ] Protect routes using a Higher-Order Component (HOC) or Middleware.
 
 ### **Verification & Tests**
@@ -29,22 +29,22 @@ This document serves as the technical blueprint for migrating Formata to a BaaS 
 ## 📦 Phase 2: Scalable Storage & Persistence (Appwrite Storage & DB)
 
 ### **Backend (FastAPI)**
-- [ ] Create `app/services/appwrite_storage.py` to handle file uploads/downloads to Appwrite Buckets.
-- [ ] Create `app/services/appwrite_db.py` to manage the `jobs` collection.
-- [ ] Refactor `worker.py` to:
-    - Download raw file from Appwrite.
-    - Process data locally.
-    - Upload result file back to Appwrite.
-    - Update Appwrite document with progress and status.
+- [x] Create `app/services/appwrite_storage.py` to handle file uploads/downloads to Appwrite Buckets.
+- [x] Create `app/services/appwrite_db.py` to manage the `jobs` collection.
+- [x] Refactor `worker.py` to:
+    - [x] Download raw file from Appwrite.
+    - [x] Process data locally.
+    - [x] Upload result file back to Appwrite.
+    - [x] Update Appwrite document with progress and status.
 
 ### **Frontend (Next.js)**
-- [ ] Refactor `UploadBox.tsx` to upload directly to Appwrite Storage bucket.
-- [ ] Store metadata (filename, size, type) in the Appwrite `jobs` collection.
+- [x] Refactor `UploadBox.tsx` (via `ingestService`) to upload directly to Appwrite Storage bucket.
+- [x] Store metadata (filename, size, type) in the Appwrite `jobs` collection (via backend `ingest` call).
 
 ### **Verification & Tests**
-- **Unit Test**: Mock Appwrite Storage to verify file chunking and upload logic.
-- **Integration Test**: Verify a processing job correctly updates the status field in the Appwrite database.
-- **Cleanup Test**: Ensure files are deleted from Appwrite Buckets when a job is deleted.
+- [x] **Unit Test**: Mock Appwrite Storage to verify file chunking and upload logic.
+- [x] **Integration Test**: Verify a processing job correctly updates the status field in the Appwrite database.
+- [ ] **Cleanup Test**: Ensure files are deleted from Appwrite Buckets when a job is deleted.
 
 ---
 

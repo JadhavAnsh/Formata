@@ -42,44 +42,43 @@
       "name": "File Upload (Step 1)",
       "item": [
         {
-          "name": "Upload CSV File",
+          "name": "Register Appwrite File (Step 1)",
           "request": {
             "method": "POST",
             "header": [
               {
-                "key": "X-API-Key",
-                "value": "{{api_key}}",
+                "key": "X-Appwrite-JWT",
+                "value": "{{appwrite_jwt}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
                 "type": "text"
               }
             ],
             "body": {
-              "mode": "formdata",
-              "formdata": [
-                {
-                  "key": "file",
-                  "type": "file",
-                  "src": "data.csv",
-                  "disabled": false
-                }
-              ]
+              "mode": "raw",
+              "raw": "{\n  \"file_id\": \"your-appwrite-file-id\",\n  \"file_name\": \"data.csv\",\n  \"file_size\": 1024,\n  \"file_type\": \"csv\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/ingest",
               "host": ["{{base_url}}"],
               "path": ["ingest"]
             },
-            "description": "Upload CSV file and create job\n\n**Step 1: Upload & Create Job**\n\nSupported formats: CSV, JSON, Excel (.xlsx/.xls), Markdown\n\n✅ Save the job_id from response to {{job_id}} variable for next requests"
+            "description": "Register a file already uploaded to Appwrite Storage\n\n**Step 1: Register & Create Job**\n\n✅ Save the job_id from response to {{job_id}} variable for next requests"
           },
           "response": []
-        },
+        }
+,
         {
           "name": "Upload JSON File",
           "request": {
             "method": "POST",
             "header": [
               {
-                "key": "X-API-Key",
-                "value": "{{api_key}}",
+                "key": "X-Appwrite-JWT",
+                "value": "{{appwrite_jwt}}",
                 "type": "text"
               }
             ],
@@ -109,8 +108,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "X-API-Key",
-                "value": "{{api_key}}",
+                "key": "X-Appwrite-JWT",
+                "value": "{{appwrite_jwt}}",
                 "type": "text"
               }
             ],
@@ -174,8 +173,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-API-Key",
-                "value": "{{api_key}}",
+                "key": "X-Appwrite-JWT",
+                "value": "{{appwrite_jwt}}",
                 "type": "text"
               }
             ],
@@ -199,8 +198,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-API-Key",
-                "value": "{{api_key}}",
+                "key": "X-Appwrite-JWT",
+                "value": "{{appwrite_jwt}}",
                 "type": "text"
               }
             ],
@@ -224,8 +223,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-API-Key",
-                "value": "{{api_key}}",
+                "key": "X-Appwrite-JWT",
+                "value": "{{appwrite_jwt}}",
                 "type": "text"
               }
             ],
@@ -244,8 +243,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-API-Key",
-                "value": "{{api_key}}",
+                "key": "X-Appwrite-JWT",
+                "value": "{{appwrite_jwt}}",
                 "type": "text"
               }
             ],
@@ -303,8 +302,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-API-Key",
-                "value": "{{api_key}}",
+                "key": "X-Appwrite-JWT",
+                "value": "{{appwrite_jwt}}",
                 "type": "text"
               }
             ],
@@ -330,8 +329,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-API-Key",
-                "value": "{{api_key}}",
+                "key": "X-Appwrite-JWT",
+                "value": "{{appwrite_jwt}}",
                 "type": "text"
               }
             ],
@@ -357,8 +356,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-API-Key",
-                "value": "{{api_key}}",
+                "key": "X-Appwrite-JWT",
+                "value": "{{appwrite_jwt}}",
                 "type": "text"
               }
             ],
@@ -382,8 +381,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "X-API-Key",
-                "value": "{{api_key}}",
+                "key": "X-Appwrite-JWT",
+                "value": "{{appwrite_jwt}}",
                 "type": "text"
               }
             ],
@@ -413,8 +412,8 @@
             "method": "POST",
             "header": [
               {
-                "key": "X-API-Key",
-                "value": "{{api_key}}",
+                "key": "X-Appwrite-JWT",
+                "value": "{{appwrite_jwt}}",
                 "type": "text"
               }
             ],
@@ -483,8 +482,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-API-Key",
-                "value": "{{api_key}}",
+                "key": "X-Appwrite-JWT",
+                "value": "{{appwrite_jwt}}",
                 "type": "text"
               }
             ],
@@ -503,8 +502,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-API-Key",
-                "value": "{{api_key}}",
+                "key": "X-Appwrite-JWT",
+                "value": "{{appwrite_jwt}}",
                 "type": "text"
               }
             ],
@@ -523,8 +522,8 @@
             "method": "GET",
             "header": [
               {
-                "key": "X-API-Key",
-                "value": "{{api_key}}",
+                "key": "X-Appwrite-JWT",
+                "value": "{{appwrite_jwt}}",
                 "type": "text"
               }
             ],
@@ -543,8 +542,8 @@
             "method": "DELETE",
             "header": [
               {
-                "key": "X-API-Key",
-                "value": "{{api_key}}",
+                "key": "X-Appwrite-JWT",
+                "value": "{{appwrite_jwt}}",
                 "type": "text"
               }
             ],
@@ -567,8 +566,8 @@
       "type": "string"
     },
     {
-      "key": "api_key",
-      "value": "your-secret-api-key",
+      "key": "appwrite_jwt",
+      "value": "your-appwrite-jwt",
       "type": "string"
     },
     {

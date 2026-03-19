@@ -2,6 +2,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, status, Depends
 import shutil
 import os
+from datetime import datetime
 
 from app.jobs.store import job_store
 from app.guards.appwrite_auth import verify_appwrite_session
@@ -13,57 +14,51 @@ from app.utils.logger import logger
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 
+from app.models.request import IngestRequest
+from app.services.appwrite_db import appwrite_db
+import uuid
+
 @router.post("", response_model=JobResponse)
 async def ingest_data(
-    file: UploadFile = File(...),
+    request: IngestRequest,
     user: dict = Depends(verify_appwrite_session)
 ):
     """
-    STEP 1: User Uploads File
-    STEP 2: Job Created (job_id)
-    - Validates file format
-    - Creates job entry
-    - Saves file to storage
+    STEP 1: Register file from Appwrite Storage
+    STEP 2: Job Created (job_id) in Appwrite DB
+    - Validates file ID exists (implicitly by being passed)
+    - Creates job entry in Appwrite DB
     - Returns job_id for tracking
     """
     try:
         user_id = user["$id"]
-        # Validate file extension
-        extension = get_file_extension(file.filename)
-        valid_extensions = [".csv", ".json", ".xlsx", ".xls", ".md"]
+        job_id = str(uuid.uuid4())
         
-        if extension not in valid_extensions:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported file format. Supported: {', '.join(valid_extensions)}"
-            )
+        # Prepare job data for Appwrite
+        job_data = {
+            "user_id": user_id,
+            "file_id": request.file_id,
+            "file_name": request.file_name,
+            "file_size": request.file_size or 0,
+            "file_type": request.file_type or get_file_extension(request.file_name),
+            "status": "pending",
+            "progress": 0.0,
+            "created_at": datetime.now().isoformat(),
+            "metadata": "{}" # Appwrite usually prefers strings or JSON objects
+        }
         
-        # Ensure upload directory exists
-        ensure_directory(settings.upload_dir)
+        # Create job document in Appwrite DB
+        appwrite_db.create_job_document(job_id, job_data)
         
-        # Create job entry
-        job_id = job_store.create_job(file.filename, "", user_id)
+        # Sync with in-memory store for now (if still used)
+        job_store.create_job(request.file_name, f"appwrite://{request.file_id}", user_id, job_id)
         
-        # Save uploaded file
-        file_path = os.path.join(settings.upload_dir, f"{job_id}_{file.filename}")
-        
-        try:
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-        finally:
-            await file.close()
-        
-        # Update file path in job
-        job = job_store.get_job(job_id)
-        if job:
-            job.file_path = file_path
-        
-        logger.info(f"File ingested successfully. Job ID: {job_id}")
+        logger.info(f"File registered successfully. Job ID: {job_id}, File ID: {request.file_id}")
         
         return JobResponse(
             job_id=job_id,
             status="pending",
-            message="File ingested successfully. Use /status/{job_id} to check processing status."
+            message="File registered successfully. Use /status/{job_id} to check processing status."
         )
         
     except HTTPException:

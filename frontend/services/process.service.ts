@@ -15,7 +15,7 @@ export const processService = {
     normalize?: boolean;
     remove_duplicates?: boolean;
     remove_outliers?: boolean;
-  }): Promise<Job> {
+  }, jwt?: string): Promise<Job> {
     // Build request body matching ProcessConfig from backend
     const body: {
       filters?: Record<string, any>;
@@ -38,10 +38,8 @@ export const processService = {
     }
     console.log(body);
     
-    return apiRequest(`/process/${jobId}`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
+    const { apiPost } = await import('./api');
+    return apiPost(`/process/${jobId}`, body, jwt);
   },
 };
 

@@ -3,7 +3,6 @@
  */
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
 export interface ApiError {
   message: string;
@@ -13,17 +12,20 @@ export interface ApiError {
 
 export async function apiRequest<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  jwt?: string
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(jwt && { 'X-Appwrite-JWT': jwt }),
+    ...((options.headers as Record<string, string>) || {}),
+  };
+
   const config: RequestInit = {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(API_KEY && { 'X-API-Key': API_KEY }),
-      ...options.headers,
-    },
+    headers,
   };
 
   try {
@@ -49,10 +51,31 @@ export async function apiRequest<T>(
   }
 }
 
+export async function apiPost<T>(
+  endpoint: string,
+  data: any,
+  jwt?: string
+): Promise<T> {
+  return apiRequest<T>(endpoint, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }, jwt);
+}
+
+export async function apiGet<T>(
+  endpoint: string,
+  jwt?: string
+): Promise<T> {
+  return apiRequest<T>(endpoint, {
+    method: 'GET',
+  }, jwt);
+}
+
 export async function apiUpload(
   endpoint: string,
   file: File,
-  additionalData?: Record<string, any>
+  additionalData?: Record<string, any>,
+  jwt?: string
 ): Promise<any> {
   const url = `${API_BASE_URL}${endpoint}`;
   const formData = new FormData();
@@ -64,10 +87,9 @@ export async function apiUpload(
     });
   }
 
-  const headers: HeadersInit = {};
-  if (API_KEY) {
-    headers['X-API-Key'] = API_KEY;
-  }
+  const headers: Record<string, string> = {
+    ...(jwt && { 'X-Appwrite-JWT': jwt }),
+  };
 
   try {
     const response = await fetch(url, {
@@ -95,4 +117,3 @@ export async function apiUpload(
     } as ApiError;
   }
 }
-

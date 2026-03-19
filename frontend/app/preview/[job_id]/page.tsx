@@ -8,6 +8,7 @@ import { ingestService } from '@/services/ingest.service';
 import type { FilterParams } from '@/services/preview.service';
 import { processService } from '@/services/process.service';
 import { applyFiltersClientSide } from '@/utils/fileParser';
+import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -18,6 +19,7 @@ interface PreviewPageProps {
 }
 
 export default function PreviewPage({ params }: PreviewPageProps) {
+  const { getJwt } = useAuth();
   const router = useRouter();
   const [job_id, setjob_id] = useState<string | null>(null);
   const [data, setData] = useState<Array<Record<string, any>>>([]);
@@ -144,9 +146,15 @@ export default function PreviewPage({ params }: PreviewPageProps) {
       if (!file) {
         throw new Error('File data not found. Please upload the file again.');
       }
+
+      // Get JWT for backend authentication
+      const jwt = await getJwt();
+      if (!jwt) {
+        throw new Error('Authentication failed. Please log in again.');
+      }
       
       // Call ingest API with file and filters
-      const ingestResponse = await ingestService.uploadFile(file, {
+      const ingestResponse = await ingestService.uploadFile(file, jwt, {
         filters: Object.keys(appliedFilters).length > 0 ? appliedFilters : undefined,
       });
       
@@ -166,7 +174,7 @@ export default function PreviewPage({ params }: PreviewPageProps) {
         normalize: true,
         remove_duplicates: true,
         remove_outliers: false,
-      });
+      }, jwt);
       
       // Navigate to process page
       router.push(`/process/${actualJobId}`);

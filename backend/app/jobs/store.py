@@ -56,9 +56,10 @@ class JobStore:
     def __init__(self):
         self.jobs: Dict[str, Job] = {}
     
-    def create_job(self, file_name: str, file_path: str, user_id: str = None) -> str:
+    def create_job(self, file_name: str, file_path: str, user_id: str = None, job_id: str = None) -> str:
         """Create a new job entry and return job_id"""
-        job_id = str(uuid.uuid4())
+        if not job_id:
+            job_id = str(uuid.uuid4())
         job = Job(job_id, file_name, file_path, user_id)
         self.jobs[job_id] = job
         return job_id

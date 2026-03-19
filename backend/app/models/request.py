@@ -4,8 +4,11 @@ from typing import Optional, Dict, Any
 
 
 class IngestRequest(BaseModel):
-    """Request model for data ingestion"""
-    pass
+    """Request model for data ingestion using Appwrite Storage"""
+    file_id: str
+    file_name: str
+    file_size: Optional[int] = None
+    file_type: Optional[str] = None
 
 
 class ProcessRequest(BaseModel):
