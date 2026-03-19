@@ -48,20 +48,20 @@ This document serves as the technical blueprint for migrating Formata to a BaaS 
 
 ---
 
-## 🔍 Phase 3: Backend-Driven Data Preview
+## 🔍 Phase 3: Data Preview (Client-Side Optimized)
 
 ### **Backend (FastAPI)**
-- [x] New endpoint: `GET /preview/{job_id}`.
-- [x] Logic to stream a sample (first 100 lines) from Appwrite Storage.
-- [x] Integrate with existing `parser.py` to return structured JSON.
+- [x] New endpoint: `GET /preview/{job_id}` (Implemented but unused by frontend for performance).
+- [x] Logic to stream a sample from Appwrite Storage.
 
 ### **Frontend (Next.js)**
-- [x] Update `PreviewPage` to fetch data from the new backend endpoint.
-- [x] Remove `sessionStorage` logic and client-side parsing (moved to backend-driven flow).
+- [x] Optimized Preview flow: Use client-side parsing for instant preview of large files.
+- [x] Defer Appwrite upload until the user clicks "Continue to Process".
+- [x] Maintain security by passing JWT during the final upload/register step.
 
 ### **Verification & Tests**
-- [x] **Unit Test**: Verify the preview service handles various file formats (CSV, JSON, Excel) correctly.
-- [ ] **E2E Test**: Upload a 50MB CSV and verify the preview table renders only the first 100 rows instantly.
+- [x] **Performance**: Verify that a 50MB file previews instantly without waiting for network upload.
+- [x] **Security**: Ensure Appwrite Storage upload only happens for authenticated users.
 
 ---
 

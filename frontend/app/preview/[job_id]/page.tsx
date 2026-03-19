@@ -1,15 +1,16 @@
 'use client';
 
+import { fileCache } from '@/app/ingest/page';
 import { FilterForm } from '@/components/FilterForm';
 import { PreviewTable } from '@/components/PreviewTable';
 import { Button } from '@/components/ui/button';
-import { previewService } from '@/services/preview.service';
+import { ingestService } from '@/services/ingest.service';
 import type { FilterParams } from '@/services/preview.service';
 import { processService } from '@/services/process.service';
 import { applyFiltersClientSide } from '@/utils/fileParser';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 
 interface PreviewPageProps {
   params: Promise<{
@@ -37,59 +38,62 @@ export default function PreviewPage({ params }: PreviewPageProps) {
     params.then((p) => setjob_id(p.job_id));
   }, [params]);
 
-  const loadPreviewData = useCallback(async () => {
+  useEffect(() => {
     if (!job_id) return;
-    
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      const jwt = await getJwt();
-      if (!jwt) throw new Error('Authentication failed');
 
-      const previewData = await previewService.getPreview(job_id, jwt);
+    const loadPreviewData = () => {
+      setIsLoading(true);
+      setError(null);
       
-      setData(previewData.records || []);
-      setOriginalData(previewData.records || []);
-      setRowCount(previewData.records?.length || 0);
-      setTotalRows(previewData.totalRows);
-      setColumns(previewData.columns || []);
-      
-      // Detect column types
-      if (previewData.records && previewData.records.length > 0) {
-        const detectedTypes: Record<string, 'text' | 'numeric' | 'datetime' | 'boolean'> = {};
-        previewData.columns.forEach((col: string) => {
-          const sampleValue = previewData.records[0][col];
-          if (sampleValue === null || sampleValue === undefined) {
-            detectedTypes[col] = 'text';
-          } else if (typeof sampleValue === 'boolean') {
-            detectedTypes[col] = 'boolean';
-          } else if (typeof sampleValue === 'number') {
-            detectedTypes[col] = 'numeric';
-          } else if (typeof sampleValue === 'string') {
-            const dateValue = new Date(sampleValue);
-            if (!isNaN(dateValue.getTime()) && sampleValue.length > 8) {
-              detectedTypes[col] = 'datetime';
+      try {
+        // Load parsed data from sessionStorage (stored after upload in IngestPage)
+        const storedData = sessionStorage.getItem(`preview_data_${job_id}`);
+        if (!storedData) {
+          throw new Error('Preview data not found. Please upload the file again.');
+        }
+        
+        const fileData = JSON.parse(storedData);
+        const parsedData = fileData.parsedData;
+        
+        setData(parsedData.records || []);
+        setOriginalData(parsedData.records || []);
+        setRowCount(parsedData.records?.length || 0);
+        setTotalRows(parsedData.totalRows);
+        setColumns(parsedData.columns || []);
+        
+        // Detect column types
+        if (parsedData.records && parsedData.records.length > 0) {
+          const detectedTypes: Record<string, 'text' | 'numeric' | 'datetime' | 'boolean'> = {};
+          parsedData.columns.forEach((col: string) => {
+            const sampleValue = parsedData.records[0][col];
+            if (sampleValue === null || sampleValue === undefined) {
+              detectedTypes[col] = 'text';
+            } else if (typeof sampleValue === 'boolean') {
+              detectedTypes[col] = 'boolean';
+            } else if (typeof sampleValue === 'number') {
+              detectedTypes[col] = 'numeric';
+            } else if (typeof sampleValue === 'string') {
+              const dateValue = new Date(sampleValue);
+              if (!isNaN(dateValue.getTime()) && sampleValue.length > 8) {
+                detectedTypes[col] = 'datetime';
+              } else {
+                detectedTypes[col] = 'text';
+              }
             } else {
               detectedTypes[col] = 'text';
             }
-          } else {
-            detectedTypes[col] = 'text';
-          }
-        });
-        setColumnTypes(detectedTypes);
+          });
+          setColumnTypes(detectedTypes);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err : new Error('Failed to load preview data'));
+      } finally {
+        setIsLoading(false);
       }
-    } catch (err) {
-      console.error('Failed to load preview:', err);
-      setError(err instanceof Error ? err : new Error('Failed to load preview data'));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [job_id, getJwt]);
+    };
 
-  useEffect(() => {
     loadPreviewData();
-  }, [loadPreviewData]);
+  }, [job_id]);
 
   const handleFilterSubmit = (filters: Record<string, any>) => {
     if (!job_id) return;
@@ -98,7 +102,7 @@ export default function PreviewPage({ params }: PreviewPageProps) {
     setError(null);
     
     try {
-      // Client-side filtering on the preview sample
+      // Client-side filtering
       const filtered = applyFiltersClientSide(originalData, filters);
       setData(filtered);
       setRowCount(filtered.length);
@@ -134,14 +138,33 @@ export default function PreviewPage({ params }: PreviewPageProps) {
     setError(null);
     
     try {
+      // Get file from memory cache
+      const file = fileCache.get(job_id);
+      
+      if (!file) {
+        throw new Error('File data not found. Please upload the file again.');
+      }
+
+      // Get JWT for backend authentication
       const jwt = await getJwt();
-      if (!jwt) throw new Error('Authentication failed');
+      if (!jwt) {
+        throw new Error('Authentication failed. Please log in again.');
+      }
       
-      // Store job_id in localStorage for other hooks
-      localStorage.setItem('job_id', job_id);
+      // 1. Upload to Appwrite and 2. Register with backend
+      const ingestResponse = await ingestService.uploadFile(file, jwt);
       
-      // Call process API with job_id and the filters applied in preview
-      await processService.startProcessing(job_id, {
+      const actualJobId = ingestResponse.job_id || ingestResponse.id;
+      
+      if (!actualJobId) {
+        throw new Error('Job ID not found in ingest response');
+      }
+      
+      // Store job_id in localStorage
+      localStorage.setItem('job_id', actualJobId);
+      
+      // 3. Start processing
+      await processService.startProcessing(actualJobId, {
         filters: Object.keys(appliedFilters).length > 0 ? appliedFilters : undefined,
         normalize: true,
         remove_duplicates: true,
@@ -149,7 +172,7 @@ export default function PreviewPage({ params }: PreviewPageProps) {
       }, jwt);
       
       // Navigate to process page
-      router.push(`/process/${job_id}`);
+      router.push(`/process/${actualJobId}`);
     } catch (err) {
       console.error('Failed to continue to process:', err);
       setError(err instanceof Error ? err : new Error('Failed to start processing'));
@@ -173,7 +196,7 @@ export default function PreviewPage({ params }: PreviewPageProps) {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold mb-2">Preview Data</h1>
-            <p className="text-muted-foreground text-sm">Job ID: {job_id}</p>
+            <p className="text-muted-foreground text-sm">Preview ID: {job_id}</p>
           </div>
           <Button 
             onClick={handleContinueToProcess} 
@@ -217,4 +240,3 @@ export default function PreviewPage({ params }: PreviewPageProps) {
     </div>
   );
 }
-
