@@ -1,52 +1,43 @@
 'use client';
 
 import { UploadBox } from '@/components/UploadBox';
-import { parseFile } from '@/utils/fileParser';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-
-// Store files in memory using a Map
-export const fileCache = new Map<string, File>();
+import { ingestService } from '@/services/ingest.service';
+import { useAuth } from '@/context/AuthContext';
 
 export default function IngestPage() {
   const router = useRouter();
-  const [isParsing, setIsParsing] = useState(false);
+  const { getJwt } = useAuth();
+  const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   const handleFileSelect = async (file: File) => {
-    setIsParsing(true);
+    setIsUploading(true);
     setError(null);
     
     try {
-      // Parse file client-side for preview (no API call yet)
-      const parsedData = await parseFile(file);
+      // Get JWT for backend authentication
+      const jwt = await getJwt();
+      if (!jwt) {
+        throw new Error('Authentication failed. Please log in again.');
+      }
       
-      // Generate a temporary preview ID (not a real job_id yet)
-      const previewId = `preview_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      // 1. Upload to Appwrite and 2. Register with backend
+      const job = await ingestService.uploadFile(file, jwt);
       
-      // Store file in memory cache instead of sessionStorage
-      fileCache.set(previewId, file);
+      const jobId = job.job_id || job.id;
+      if (!jobId) {
+        throw new Error('Failed to create job');
+      }
       
-      // Store metadata and parsed data in sessionStorage for preview page
-      const fileData = {
-        previewId,
-        fileName: file.name,
-        fileType: file.name.split('.').pop()?.toLowerCase(),
-        fileSize: file.size,
-        parsedData,
-        uploadedAt: new Date().toISOString(),
-      };
-      
-      // Store only metadata in sessionStorage (not the file itself)
-      sessionStorage.setItem(`preview_data_${previewId}`, JSON.stringify(fileData));
-      
-      // Navigate to preview with preview_id in params
-      router.push(`/preview/${previewId}`);
+      // Navigate to preview with the REAL job_id from backend
+      router.push(`/preview/${jobId}`);
     } catch (err) {
-      console.error('File parsing failed:', err);
-      setError(err instanceof Error ? err : new Error('Failed to parse file'));
+      console.error('File upload failed:', err);
+      setError(err instanceof Error ? err : new Error('Failed to upload file'));
     } finally {
-      setIsParsing(false);
+      setIsUploading(false);
     }
   };
 
@@ -65,9 +56,9 @@ export default function IngestPage() {
         />
       </div>
       
-      {isParsing && (
+      {isUploading && (
         <p className="mt-4 text-sm text-gray-500 center">
-          Processing...
+          Uploading to Appwrite...
         </p>
       )}
       

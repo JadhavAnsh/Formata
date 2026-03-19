@@ -24,15 +24,14 @@ export const resultService = {
   /**
    * Get the profile report HTML content for a job
    */
-  async getProfileReport(jobId: string): Promise<ProfileReport> {
+  async getProfileReport(jobId: string, jwt?: string): Promise<ProfileReport> {
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
-    const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
     
     const url = `${API_BASE_URL}/profile/${jobId}`;
     
     const response = await fetch(url, {
       headers: {
-        ...(API_KEY && { 'X-API-Key': API_KEY }),
+        ...(jwt && { 'X-Appwrite-JWT': jwt }),
       },
     });
     
@@ -46,15 +45,14 @@ export const resultService = {
   /**
    * Download the cleaned dataset file for a job
    */
-  async downloadResult(jobId: string): Promise<void> {
+  async downloadResult(jobId: string, jwt?: string): Promise<void> {
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
-    const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
     
     const url = `${API_BASE_URL}/result/${jobId}/download`;
     
     const response = await fetch(url, {
       headers: {
-        ...(API_KEY && { 'X-API-Key': API_KEY }),
+        ...(jwt && { 'X-Appwrite-JWT': jwt }),
       },
     });
     
@@ -86,15 +84,14 @@ export const resultService = {
   /**
    * Download the vector pickle file for a job
    */
-  async downloadVectorPkl(jobId: string): Promise<void> {
+  async downloadVectorPkl(jobId: string, jwt?: string): Promise<void> {
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
-    const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
     
     const url = `${API_BASE_URL}/vectors/${jobId}/download?format=pkl`;
     
     const response = await fetch(url, {
       headers: {
-        ...(API_KEY && { 'X-API-Key': API_KEY }),
+        ...(jwt && { 'X-Appwrite-JWT': jwt }),
       },
     });
     
@@ -123,15 +120,14 @@ export const resultService = {
     URL.revokeObjectURL(downloadUrl);
   },
 
-    async downloadVectorH5(jobId: string): Promise<void> {
+    async downloadVectorH5(jobId: string, jwt?: string): Promise<void> {
     const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
-    const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
     
     const url = `${API_BASE_URL}/vectors/${jobId}/download?format=h5`;
     
     const response = await fetch(url, {
       headers: {
-        ...(API_KEY && { 'X-API-Key': API_KEY }),
+        ...(jwt && { 'X-Appwrite-JWT': jwt }),
       },
     });
     
@@ -164,10 +160,10 @@ export const resultService = {
    * Get processing results for a job
    * Results are stored in the job's result field from the status endpoint
    */
-  async getResults(jobId: string): Promise<ProcessingResult> {
+  async getResults(jobId: string, jwt?: string): Promise<ProcessingResult> {
     try {
       // Get job status which includes the result field
-      const job = await statusService.getJobStatus(jobId);
+      const job = await statusService.getJobStatus(jobId, jwt);
       
       // Extract result data from job.result
       const resultData = job.result || job.metadata?.result;
@@ -199,4 +195,3 @@ export const resultService = {
     }
   },
 };
-

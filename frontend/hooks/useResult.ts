@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { resultService } from '@/services/result.service';
+import { useAuth } from '@/context/AuthContext';
 import type { ProcessingResult } from '@/services/result.service';
 
 interface UseResultOptions {
@@ -17,6 +18,7 @@ export function useResult({
   onSuccess,
   onError,
 }: UseResultOptions) {
+  const { getJwt } = useAuth();
   const [result, setResult] = useState<ProcessingResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -28,7 +30,10 @@ export function useResult({
     setError(null);
 
     try {
-      const data = await resultService.getResults(jobId);
+      const jwt = await getJwt();
+      if (!jwt) throw new Error('No JWT available');
+
+      const data = await resultService.getResults(jobId, jwt);
       setResult(data);
       onSuccess?.(data);
     } catch (err) {
@@ -38,7 +43,7 @@ export function useResult({
     } finally {
       setIsLoading(false);
     }
-  }, [jobId, enabled, onSuccess, onError]);
+  }, [jobId, enabled, onSuccess, onError, getJwt]);
 
   useEffect(() => {
     if (jobId && enabled) {
