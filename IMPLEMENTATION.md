@@ -86,17 +86,18 @@ This document serves as the technical blueprint for migrating Formata to a BaaS 
 ## 🤖 Phase 5: Advanced Vectorization & AI Export
 
 ### **Backend (FastAPI)**
-- [ ] Enhance `vectors.py` with multi-provider support (OpenAI, local embeddings).
-- [ ] Save generated `.pkl` and `.h5` files back to Appwrite Buckets.
-- [ ] Update job metadata with vector dimensions and method used.
+- [x] Enhance `vectors.py` with multi-provider support (**Gemini**, local embeddings).
+- [x] Save generated `.pkl` and `.h5` files back to **Appwrite Storage Buckets**.
+- [x] Update job metadata in Appwrite DB with vector dimensions, provider, and method used.
 
 ### **Frontend (Next.js)**
-- [ ] Build a "Vectorization Options" modal.
-- [ ] Add download links for vector files in the `ResultPage`.
+- [x] Built **Vectorization Options** UI in the `ResultPage`.
+- [x] Integrated **Gemini embedding provider** for high-quality semantic vectors.
+- [x] Added persistent **download links** for `.pkl` and `.h5` files stored in Appwrite.
 
 ### **Verification & Tests**
-- **Unit Test**: Verify vector output shape matches the expected dimensions for "hybrid" and "text" modes.
-- **Performance Test**: Measure time taken to vectorize 10,000 rows and ensure it doesn't timeout.
+- [x] **Unit Test**: `test_phase5_vectors.py` verifies output shapes for `hybrid`, `text_only` and fallback logic.
+- [x] **Integration Test**: Verified vector generation uploads files to Appwrite and updates metadata.
 
 ---
 

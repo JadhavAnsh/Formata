@@ -1,8 +1,12 @@
-# In-memory job store
+# Job store backed by Appwrite DB
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 from enum import Enum
 import uuid
+import json
+
+from app.services.appwrite_db import appwrite_db
+from app.utils.logger import logger
 
 
 class JobStatus(str, Enum):
@@ -15,7 +19,7 @@ class JobStatus(str, Enum):
 
 
 class Job:
-    """Job entity"""
+    """Job entity for data transfer and local processing"""
     
     def __init__(self, job_id: str, file_name: str, file_path: str, user_id: str = None):
         self.job_id = job_id
@@ -30,9 +34,46 @@ class Job:
         self.result: Optional[Dict[str, Any]] = None
         self.errors: List[str] = []
         self.metadata: Dict[str, Any] = {}
+
+    @classmethod
+    def from_db(cls, job_id: str, doc: Dict[str, Any]) -> 'Job':
+        """Create a Job object from an Appwrite document"""
+        job = cls(
+            job_id=job_id,
+            file_name=doc.get("file-name") or doc.get("file_name", "unknown"),
+            file_path=f"appwrite://{doc.get('file_id')}" if doc.get('file_id') else "unknown",
+            user_id=doc.get("user_id")
+        )
+        job.status = JobStatus(doc.get("status", "pending"))
+        job.progress = doc.get("progress", 0.0)
+        
+        # Parse created_at
+        created_at_str = doc.get("created_at")
+        if created_at_str:
+            try:
+                job.created_at = datetime.fromisoformat(created_at_str)
+            except:
+                pass
+        
+        # Parse metadata
+        metadata_raw = doc.get("metadata", "{}")
+        if isinstance(metadata_raw, str):
+            try:
+                job.metadata = json.loads(metadata_raw)
+            except:
+                job.metadata = {}
+        else:
+            job.metadata = metadata_raw or {}
+            
+        if "result" in job.metadata:
+            job.result = job.metadata["result"]
+        if "errors" in job.metadata:
+            job.errors = job.metadata["errors"]
+            
+        return job
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert job to dictionary"""
+        """Convert job to dictionary for API response"""
         return {
             "job_id": self.job_id,
             "user_id": self.user_id,
@@ -50,89 +91,122 @@ class Job:
 
 class JobStore:
     """
-    In-memory storage for job states and results
+    Job storage interface that persists to Appwrite DB
     """
     
-    def __init__(self):
-        self.jobs: Dict[str, Job] = {}
-    
     def create_job(self, file_name: str, file_path: str, user_id: str = None, job_id: str = None) -> str:
-        """Create a new job entry and return job_id"""
+        """Create a new job entry in DB and return job_id"""
         if not job_id:
             job_id = str(uuid.uuid4())
-        job = Job(job_id, file_name, file_path, user_id)
-        self.jobs[job_id] = job
-        return job_id
+            
+        # Extract file_id from appwrite:// protocol if present
+        file_id = file_path.replace("appwrite://", "") if file_path.startswith("appwrite://") else ""
+            
+        job_data = {
+            "user_id": user_id,
+            "file_id": file_id,
+            "file-name": file_name,
+            "status": JobStatus.PENDING.value,
+            "progress": 0.0,
+            "created_at": datetime.now().isoformat(),
+            "metadata": "{}"
+        }
+        
+        try:
+            appwrite_db.create_job_document(job_id, job_data)
+            return job_id
+        except Exception as e:
+            logger.error(f"Failed to create job in DB: {str(e)}")
+            # Fallback to a temporary job ID (though it won't be persisted well)
+            return job_id
     
     def get_job(self, job_id: str) -> Optional[Job]:
-        """Get job by ID"""
-        return self.jobs.get(job_id)
+        """Get job from DB by ID"""
+        try:
+            doc = appwrite_db.get_job_document(job_id)
+            return Job.from_db(job_id, doc)
+        except Exception as e:
+            logger.error(f"Failed to fetch job {job_id} from DB: {str(e)}")
+            return None
     
     def update_job_status(self, job_id: str, status: JobStatus) -> bool:
-        """Update job status"""
-        if job_id not in self.jobs:
+        """Update job status in DB"""
+        update_data = {"status": status.value}
+        
+        # Note: started_at and completed_at logic should ideally be in DB schema, 
+        # but for now we'll stick to what the worker does or put it in metadata.
+        
+        try:
+            return appwrite_db.update_job_document(job_id, update_data)
+        except Exception as e:
+            logger.error(f"Failed to update job status {job_id}: {str(e)}")
             return False
-        
-        job = self.jobs[job_id]
-        job.status = status
-        
-        if status == JobStatus.PROCESSING:
-            job.started_at = datetime.now()
-        elif status in [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED]:
-            job.completed_at = datetime.now()
-        
-        return True
     
     def update_job_progress(self, job_id: str, progress: float) -> bool:
-        """Update job progress (0.0 to 1.0)"""
-        if job_id not in self.jobs:
+        """Update job progress in DB"""
+        try:
+            return appwrite_db.update_job_document(job_id, {"progress": max(0.0, min(1.0, progress))})
+        except Exception as e:
+            logger.error(f"Failed to update job progress {job_id}: {str(e)}")
             return False
-        
-        self.jobs[job_id].progress = max(0.0, min(1.0, progress))
-        return True
     
     def add_job_error(self, job_id: str, error: str) -> bool:
-        """Add error to job"""
-        if job_id not in self.jobs:
+        """Add error to job metadata in DB"""
+        job = self.get_job(job_id)
+        if not job:
             return False
-        
-        self.jobs[job_id].errors.append(error)
-        return True
+            
+        job.errors.append(error)
+        try:
+            metadata = job.metadata
+            metadata["errors"] = job.errors
+            return appwrite_db.update_job_document(job_id, {"metadata": json.dumps(metadata)})
+        except Exception as e:
+            logger.error(f"Failed to add job error {job_id}: {str(e)}")
+            return False
     
     def set_job_result(self, job_id: str, result: Dict[str, Any]) -> bool:
-        """Set job result"""
-        if job_id not in self.jobs:
+        """Set job result in DB"""
+        job = self.get_job(job_id)
+        if not job:
             return False
-        
-        self.jobs[job_id].result = result
-        return True
+            
+        try:
+            metadata = job.metadata
+            metadata["result"] = result
+            return appwrite_db.update_job_document(job_id, {"metadata": json.dumps(metadata)})
+        except Exception as e:
+            logger.error(f"Failed to set job result {job_id}: {str(e)}")
+            return False
     
     def set_job_metadata(self, job_id: str, metadata: Dict[str, Any]) -> bool:
-        """Set job metadata"""
-        if job_id not in self.jobs:
+        """Set job metadata in DB"""
+        try:
+            return appwrite_db.update_job_document(job_id, {"metadata": json.dumps(metadata)})
+        except Exception as e:
+            logger.error(f"Failed to set job metadata {job_id}: {str(e)}")
             return False
-        
-        self.jobs[job_id].metadata = metadata
-        return True
-    
-    def get_all_jobs(self) -> List[Dict[str, Any]]:
-        """Get all jobs as dictionaries"""
-        return [job.to_dict() for job in self.jobs.values()]
     
     def get_jobs_by_user(self, user_id: str) -> List[Dict[str, Any]]:
-        """Get all jobs for a specific user"""
-        return [job.to_dict() for job in self.jobs.values() if job.user_id == user_id]
+        """Get all jobs for a specific user from DB"""
+        try:
+            docs = appwrite_db.list_user_jobs(user_id)
+            return [Job.from_db(doc['$id'], doc).to_dict() for doc in docs]
+        except Exception as e:
+            logger.error(f"Failed to fetch user jobs for {user_id}: {str(e)}")
+            return []
     
     def delete_job(self, job_id: str) -> bool:
-        """Delete a job"""
-        if job_id in self.jobs:
-            del self.jobs[job_id]
-            return True
-        return False
+        """Delete a job from DB"""
+        try:
+            return appwrite_db.delete_job_document(job_id)
+        except Exception as e:
+            logger.error(f"Failed to delete job {job_id}: {str(e)}")
+            return False
     
     def job_exists(self, job_id: str) -> bool:
-        """Check if job exists"""
-        return job_id in self.jobs
+        """Check if job exists in DB"""
+        return self.get_job(job_id) is not None
 
 
 # Global job store instance

@@ -885,7 +885,8 @@ job_id: string (UUID)
 **Request Body:**
 ```json
 {
-  "method": "hybrid"
+  "method": "hybrid",
+  "provider": "local"
 }
 ```
 
@@ -893,21 +894,30 @@ job_id: string (UUID)
 
 | Method | Description | Use Case |
 |--------|-------------|----------|
-| `hybrid` | Text embeddings (512d) + normalized numeric + one-hot categorical | Recommended; best for mixed data types |
+| `hybrid` | Text embeddings + normalized numeric + one-hot categorical | Recommended; best for mixed data types |
 | `text_only` | Treats all columns as text, generates embeddings | When all data is textual |
 | `numeric` | Numeric normalization + one-hot encoding | Fast processing, structured data only |
+
+**Provider Options:**
+
+| Provider | Dimensions | Description |
+|----------|------------|-------------|
+| `local` | 512d | Uses HashingVectorizer (Fast, Offline, No API key needed) |
+| `gemini` | 768d | Uses Google Gemini `text-embedding-004` (High-quality, Semantic) |
 
 **Response:**
 ```json
 {
   "status": "success",
   "job_id": "550e8400-e29b-41d4-a716-446655440000",
-  "vector_shape": [1000, 2048],
+  "vector_shape": [1000, 770],
   "n_samples": 1000,
-  "n_features": 2048,
+  "n_features": 770,
   "method": "hybrid",
-  "message": "Vectors generated successfully. Download using /vectors/{job_id}/download with format parameter.",
-  "download_formats": ["pkl", "h5"]
+  "provider": "gemini",
+  "pkl_file_id": "appwrite-file-id-1",
+  "h5_file_id": "appwrite-file-id-2",
+  "message": "Vectors generated and uploaded to Appwrite Storage successfully."
 }
 ```
 

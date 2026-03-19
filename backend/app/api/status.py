@@ -2,9 +2,10 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 from typing import Dict, Any
 
-from app.jobs.store import job_store
+from app.jobs.store import job_store, JobStatus
 from app.guards.appwrite_auth import verify_appwrite_session
 from app.utils.logger import logger
+from app.utils.job_utils import get_job_with_fallback
 
 router = APIRouter(prefix="/status", tags=["status"])
 
@@ -21,7 +22,7 @@ async def get_job_status(
     - Status: pending | processing | completed | failed | cancelled
     """
     try:
-        job = job_store.get_job(job_id)
+        job = await get_job_with_fallback(job_id)
         if not job:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

@@ -20,9 +20,8 @@ async def process_job_async(job_id: str, file_path: str, config: Dict[str, Any])
     """
     local_input_path = None
     try:
-        # Update status to processing in memory and Appwrite
+        # Update status (now DB-backed)
         job_store.update_job_status(job_id, JobStatus.PROCESSING)
-        appwrite_db.update_job_document(job_id, {"status": "processing", "progress": 0.1})
         logger.info(f"Started processing job {job_id}")
         
         # Determine if we need to download from Appwrite
@@ -41,12 +40,11 @@ async def process_job_async(job_id: str, file_path: str, config: Dict[str, Any])
         # Initialize pipeline
         pipeline = ProcessingPipeline()
         
-        # Define progress callback for Appwrite DB sync
+        # Define progress callback
         def progress_callback(progress: float):
-            job_store.update_job_progress(job_id, progress)
-            # Throttle DB updates or just do it for key milestones
+            # Throttle DB updates via job_store
             if int(progress * 10) % 2 == 0: # Update every 20%
-                appwrite_db.update_job_document(job_id, {"progress": progress})
+                job_store.update_job_progress(job_id, progress)
 
         # Run processing pipeline
         result = await pipeline.run_async(
@@ -63,54 +61,23 @@ async def process_job_async(job_id: str, file_path: str, config: Dict[str, Any])
             result_file_id = appwrite_storage.upload_file(result["output_path"])
             result["appwrite_result_file_id"] = result_file_id
         
-        # Set result in memory
+        # Merge result into metadata for DB persistence
+        metadata = result.get("metadata", {})
+        metadata["summary"] = result.get("summary", {})
+        metadata["result_file_id"] = result_file_id
+        
+        # Update JobStore (updates DB)
         job_store.set_job_result(job_id, result)
-        
-        # Update job metadata
-        job = job_store.get_job(job_id)
-        update_data = {
-            "status": "completed",
-            "progress": 1.0,
-            "completed_at": datetime.now().isoformat(),
-            "result_file_id": result_file_id or ""
-        }
-        
-        if job and result.get("metadata"):
-            # Save metadata as JSON string for Appwrite
-            update_data["metadata"] = json.dumps(result["metadata"])
-            
-            # Update memory store as well
-            if result["metadata"].get("clean_profile_path"):
-                job.metadata["clean_profile_path"] = result["metadata"]["clean_profile_path"]
-            if result["metadata"].get("processing_time"):
-                job.metadata["processing_time"] = result["metadata"]["processing_time"]
-            if result.get("summary"):
-                job.metadata["summary"] = result["summary"]
-            
-            job_store.jobs[job_id] = job
-        
-        # Update Appwrite DB
-        appwrite_db.update_job_document(job_id, update_data)
-        
-        # Mark as completed in memory
+        job_store.set_job_metadata(job_id, metadata)
         job_store.update_job_status(job_id, JobStatus.COMPLETED)
+        job_store.update_job_progress(job_id, 1.0)
+        
         logger.info(f"Completed processing job {job_id}")
         
     except Exception as e:
         error_message = f"{str(e)}\n{traceback.format_exc()}"
         job_store.add_job_error(job_id, error_message)
         job_store.update_job_status(job_id, JobStatus.FAILED)
-        
-        # Update Appwrite DB with error
-        try:
-            appwrite_db.update_job_document(job_id, {
-                "status": "failed",
-                "progress": 1.0,
-                "metadata": json.dumps({"error": str(e)})
-            })
-        except:
-            pass
-            
         logger.error(f"Error processing job {job_id}: {error_message}")
     finally:
         # Cleanup local temporary file

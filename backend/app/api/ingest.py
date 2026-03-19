@@ -25,31 +25,17 @@ async def ingest_data(
 ):
     """
     STEP 1: Register file from Appwrite Storage
-    STEP 2: Job Created (job_id) in Appwrite DB
-    - Validates file ID exists (implicitly by being passed)
-    - Creates job entry in Appwrite DB
-    - Returns job_id for tracking
+    STEP 2: Job Created in Appwrite DB via JobStore
     """
     try:
         user_id = user["$id"]
-        job_id = str(uuid.uuid4())
         
-        # Prepare job data for Appwrite
-        job_data = {
-            "user_id": user_id,
-            "file_id": request.file_id,
-            "file-name": request.file_name,
-            "status": "pending",
-            "progress": 0.0,
-            "created_at": datetime.now().isoformat(),
-            "metadata": "{}"
-        }
-        
-        # Create job document in Appwrite DB
-        appwrite_db.create_job_document(job_id, job_data)
-        
-        # Sync with in-memory store for now (if still used)
-        job_store.create_job(request.file_name, f"appwrite://{request.file_id}", user_id, job_id)
+        # Create job via JobStore (which handles Appwrite DB persistence)
+        job_id = job_store.create_job(
+            file_name=request.file_name,
+            file_path=f"appwrite://{request.file_id}",
+            user_id=user_id
+        )
         
         logger.info(f"File registered successfully. Job ID: {job_id}, File ID: {request.file_id}")
         

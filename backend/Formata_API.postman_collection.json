@@ -280,7 +280,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"method\": \"hybrid\"\n}",
+              "raw": "{\n  \"method\": \"hybrid\",\n  \"provider\": \"local\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

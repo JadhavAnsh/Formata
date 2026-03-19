@@ -7,11 +7,13 @@ from typing import Dict, Any, Optional
 import tempfile
 import os
 import pandas as pd
+from datetime import datetime
 
 from app.jobs.store import job_store, JobStatus
 from app.guards.appwrite_auth import verify_appwrite_session
 from app.utils.logger import logger
 from app.utils.file_utils import ensure_directory
+from app.utils.job_utils import get_job_with_fallback
 from app.services.conversion import csv_to_json
 from app.services.vectorization import (
     dataframe_to_vectors,
@@ -20,12 +22,17 @@ from app.services.vectorization import (
 )
 from app.config.settings import settings
 
+from app.services.appwrite_storage import appwrite_storage
+from app.services.appwrite_db import appwrite_db
+import json
+
 router = APIRouter(prefix="/vectors", tags=["vectors"])
 
 
 class VectorRequest(BaseModel):
     """Request model for vector generation"""
     method: str = "hybrid"  # hybrid, text_only, numeric
+    provider: str = "local" # local, gemini
 
 
 @router.post("/{job_id}/generate")
@@ -35,15 +42,19 @@ async def generate_vectors(
     user: dict = Depends(verify_appwrite_session)
 ) -> Dict[str, Any]:
     """
-    Generate vector embeddings from processed data
+    Generate vector embeddings from processed data and upload to Appwrite
     
     Methods:
-    - hybrid: Text embeddings (512d) + normalized numeric + one-hot categorical
+    - hybrid: Text embeddings + normalized numeric + one-hot categorical
     - text_only: Treats all columns as text, generates embeddings
     - numeric: Numeric normalization + one-hot encoding for categoricals
+    
+    Providers:
+    - local: HashingVectorizer (512d)
+    - gemini: Google Generative AI (768d)
     """
     try:
-        job = job_store.get_job(job_id)
+        job = await _get_job_with_fallback(job_id)
         if not job:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -76,19 +87,25 @@ async def generate_vectors(
                 detail="Output file not found on disk"
             )
         
-        logger.info(f"Generating vectors for job {job_id} using method: {request.method}")
+        logger.info(f"Generating vectors for job {job_id} using method: {request.method}, provider: {request.provider}")
         
-        # Validate method
+        # Validate method and provider
         valid_methods = ["hybrid", "text_only", "numeric"]
         if request.method not in valid_methods:
             raise ValueError(f"Invalid method. Supported: {valid_methods}")
+            
+        valid_providers = ["local", "gemini"]
+        if request.provider not in valid_providers:
+            raise ValueError(f"Invalid provider. Supported: {valid_providers}")
+        
+        if request.provider == "gemini" and not settings.google_api_key:
+            raise ValueError("Gemini API key not configured. Please use 'local' provider.")
         
         # Read output file
         if output_path.endswith('.csv'):
             df = pd.read_csv(output_path)
         elif output_path.endswith('.json'):
             with open(output_path, 'r') as f:
-                import json
                 data = json.load(f)
                 records = data.get('records', data) if isinstance(data, dict) else data
                 df = pd.DataFrame(records)
@@ -96,21 +113,51 @@ async def generate_vectors(
             raise ValueError("Unsupported output file format")
         
         # Generate vectors
-        vectors, metadata = dataframe_to_vectors(df, method=request.method)
+        vectors, metadata = dataframe_to_vectors(df, method=request.method, provider=request.provider)
+        
+        # Save locally first
+        temp_dir = tempfile.gettempdir()
+        pkl_path = os.path.join(temp_dir, f"{job_id}_vectors.pkl")
+        h5_path = os.path.join(temp_dir, f"{job_id}_vectors.h5")
+        
+        save_vectors_pickle(vectors, metadata, pkl_path)
+        save_vectors_hdf5(vectors, metadata, h5_path)
+        
+        # Upload to Appwrite Storage
+        logger.info(f"Uploading vectors to Appwrite Storage...")
+        pkl_file_id = appwrite_storage.upload_file(pkl_path)
+        h5_file_id = appwrite_storage.upload_file(h5_path)
+        
+        # Cleanup local temp files
+        os.remove(pkl_path)
+        os.remove(h5_path)
         
         # Store vector info in job metadata
-        if not job.metadata:
-            job.metadata = {}
-        job.metadata['vector_info'] = {
+        vector_info = {
             'shape': list(metadata['shape']),
             'method': metadata['method'],
+            'provider': metadata['provider'],
             'n_samples': metadata['n_samples'],
             'n_features': metadata['n_features'],
-            'n_original_columns': len(metadata['original_columns']),
-            'original_columns': metadata['original_columns']
+            'pkl_file_id': pkl_file_id,
+            'h5_file_id': h5_file_id,
+            'generated_at': datetime.now().isoformat()
         }
         
-        logger.info(f"Vectors generated: shape {metadata['shape']}")
+        if not job.metadata:
+            job.metadata = {}
+        job.metadata['vector_info'] = vector_info
+        
+        # Update Appwrite DB
+        try:
+            job_doc = appwrite_db.get_job_document(job_id)
+            existing_metadata = json.loads(job_doc.get('metadata', '{}'))
+            existing_metadata['vector_info'] = vector_info
+            appwrite_db.update_job_document(job_id, {"metadata": json.dumps(existing_metadata)})
+        except Exception as e:
+            logger.error(f"Failed to update Appwrite DB with vector info: {str(e)}")
+        
+        logger.info(f"Vectors generated and uploaded: shape {metadata['shape']}")
         
         return {
             "status": "success",
@@ -119,8 +166,10 @@ async def generate_vectors(
             "n_samples": metadata['n_samples'],
             "n_features": metadata['n_features'],
             "method": metadata['method'],
-            "message": f"Vectors generated successfully. Download using /vectors/{{job_id}}/download with format parameter.",
-            "download_formats": ["pkl", "h5"]
+            "provider": metadata['provider'],
+            "pkl_file_id": pkl_file_id,
+            "h5_file_id": h5_file_id,
+            "message": "Vectors generated and uploaded to Appwrite Storage successfully."
         }
         
     except ValueError as e:
@@ -144,7 +193,7 @@ async def download_vectors(
     job_id: str,
     format: str = "pkl",
     user: dict = Depends(verify_appwrite_session)
-) -> FileResponse:
+):
     """
     Download vectorized data in specified format
     
@@ -155,7 +204,7 @@ async def download_vectors(
     Returns downloadable vector file ready for LLM feeding
     """
     try:
-        job = job_store.get_job(job_id)
+        job = await _get_job_with_fallback(job_id)
         if not job:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -275,7 +324,7 @@ async def get_vector_info(
     Returns metadata about the vectors that would be generated
     """
     try:
-        job = job_store.get_job(job_id)
+        job = await _get_job_with_fallback(job_id)
         if not job:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

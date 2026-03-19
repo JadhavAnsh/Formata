@@ -7,7 +7,8 @@ from typing import List, Dict, Any, Tuple
 from sklearn.feature_extraction.text import HashingVectorizer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 import os
-
+from app.config.settings import settings
+from app.utils.logger import logger
 
 # Stateless vectorizer (no fitting required)
 _vectorizer = HashingVectorizer(
@@ -16,23 +17,43 @@ _vectorizer = HashingVectorizer(
     norm="l2"
 )
 
+def _get_genai():
+    """Lazy import for Google Generative AI"""
+    import google.generativeai as genai
+    if settings.google_api_key:
+        genai.configure(api_key=settings.google_api_key)
+    return genai
 
-def generate_embeddings(text: str) -> np.ndarray:
+def generate_embeddings(text: str, provider: str = "local") -> np.ndarray:
     """
-    Generate embeddings for text data (offline, stateless)
+    Generate embeddings for text data
+    Providers: 'local' (Hashing), 'gemini' (Google Generative AI)
     """
     if not text or not isinstance(text, str):
-        return np.zeros(512)
+        size = 768 if provider == "gemini" else 512
+        return np.zeros(size)
 
     try:
-        vector = _vectorizer.transform([text])
-        return vector.toarray()[0]
+        if provider == "gemini" and settings.google_api_key:
+            genai = _get_genai()
+            result = genai.embed_content(
+                model="models/text-embedding-004",
+                content=text,
+                task_type="retrieval_document"
+            )
+            return np.array(result['embedding'])
+        else:
+            # Fallback to local hashing
+            vector = _vectorizer.transform([text])
+            return vector.toarray()[0]
 
-    except Exception:
-        return np.zeros(512)
+    except Exception as e:
+        logger.error(f"Embedding error with provider {provider}: {str(e)}")
+        size = 768 if provider == "gemini" else 512
+        return np.zeros(size)
 
 
-def batch_generate_embeddings(texts: List[str]) -> List[np.ndarray]:
+def batch_generate_embeddings(texts: List[str], provider: str = "local") -> List[np.ndarray]:
     """
     Generate embeddings for multiple texts
     """
@@ -41,14 +62,39 @@ def batch_generate_embeddings(texts: List[str]) -> List[np.ndarray]:
 
     try:
         texts = [t if isinstance(t, str) else "" for t in texts]
-        vectors = _vectorizer.transform(texts)
-        return vectors.toarray().tolist()
+        
+        if provider == "gemini" and settings.google_api_key:
+            genai = _get_genai()
+            # Gemini batch embedding (max 100 per request)
+            # For simplicity, we process in chunks if needed
+            all_embeddings = []
+            chunk_size = 100
+            for i in range(0, len(texts), chunk_size):
+                chunk = texts[i:i + chunk_size]
+                result = genai.embed_content(
+                    model="models/text-embedding-004",
+                    content=chunk,
+                    task_type="retrieval_document"
+                )
+                all_embeddings.extend(result['embedding'])
+            return all_embeddings
+        else:
+            vectors = _vectorizer.transform(texts)
+            embeddings = vectors.toarray()
+            # If Gemini was requested but we are falling back, pad/truncate to 768
+            if provider == "gemini":
+                padded = np.zeros((embeddings.shape[0], 768))
+                padded[:, :512] = embeddings
+                return padded.tolist()
+            return embeddings.tolist()
 
-    except Exception:
-        return [np.zeros(512) for _ in texts]
+    except Exception as e:
+        logger.error(f"Batch embedding error with provider {provider}: {str(e)}")
+        size = 768 if provider == "gemini" else 512
+        return [np.zeros(size) for _ in texts]
 
 
-def dataframe_to_vectors(df: pd.DataFrame, method: str = "hybrid") -> Tuple[np.ndarray, Dict[str, Any]]:
+def dataframe_to_vectors(df: pd.DataFrame, method: str = "hybrid", provider: str = "local") -> Tuple[np.ndarray, Dict[str, Any]]:
     """
     Convert DataFrame to vector representation suitable for LLMs
     
@@ -57,12 +103,18 @@ def dataframe_to_vectors(df: pd.DataFrame, method: str = "hybrid") -> Tuple[np.n
     - 'text_only': Text embeddings for all columns (treats everything as text)
     - 'numeric': Numeric normalization only (scales values to 0-1)
     
+    Providers:
+    - 'local': HashingVectorizer (512d)
+    - 'gemini': Google Generative AI (768d)
+    
     Returns:
         - vectors: numpy array of shape (n_samples, n_features)
         - metadata: dict with vectorization info (column mapping, feature names, etc.)
     """
     if df is None or df.empty:
         raise ValueError("DataFrame is empty")
+    
+    embedding_size = 768 if provider == "gemini" else 512
     
     try:
         vectors_list = []
@@ -109,17 +161,18 @@ def dataframe_to_vectors(df: pd.DataFrame, method: str = "hybrid") -> Tuple[np.n
                 if method == "hybrid" or method == "text_only":
                     # Use text embeddings for text columns
                     texts = col_data.fillna("").astype(str).tolist()
-                    embeddings = batch_generate_embeddings(texts)
+                    embeddings = batch_generate_embeddings(texts, provider=provider)
                     embeddings_array = np.array(embeddings)
                     vectors_list.append(embeddings_array)
                     
                     column_metadata[col_name] = {
                         "type": "text_embedded",
-                        "feature_indices": list(range(current_feature_idx, current_feature_idx + 512)),
-                        "embedding_size": 512
+                        "feature_indices": list(range(current_feature_idx, current_feature_idx + embedding_size)),
+                        "embedding_size": embedding_size,
+                        "provider": provider
                     }
-                    feature_names.extend([f"{col_name}_emb_{i}" for i in range(512)])
-                    current_feature_idx += 512
+                    feature_names.extend([f"{col_name}_emb_{i}" for i in range(embedding_size)])
+                    current_feature_idx += embedding_size
                 else:
                     # Numeric-only method: one-hot encode categorical
                     unique_vals = col_data.nunique()
@@ -136,16 +189,17 @@ def dataframe_to_vectors(df: pd.DataFrame, method: str = "hybrid") -> Tuple[np.n
                     else:
                         # Too many categories, use text embedding
                         texts = col_data.fillna("").astype(str).tolist()
-                        embeddings = batch_generate_embeddings(texts)
+                        embeddings = batch_generate_embeddings(texts, provider=provider)
                         embeddings_array = np.array(embeddings)
                         vectors_list.append(embeddings_array)
                         column_metadata[col_name] = {
                             "type": "text_embedded",
-                            "feature_indices": list(range(current_feature_idx, current_feature_idx + 512)),
-                            "embedding_size": 512
+                            "feature_indices": list(range(current_feature_idx, current_feature_idx + embedding_size)),
+                            "embedding_size": embedding_size,
+                            "provider": provider
                         }
-                        feature_names.extend([f"{col_name}_emb_{i}" for i in range(512)])
-                        current_feature_idx += 512
+                        feature_names.extend([f"{col_name}_emb_{i}" for i in range(embedding_size)])
+                        current_feature_idx += embedding_size
         
         # Concatenate all vectors
         final_vectors = np.hstack(vectors_list)
@@ -153,6 +207,7 @@ def dataframe_to_vectors(df: pd.DataFrame, method: str = "hybrid") -> Tuple[np.n
         metadata = {
             "shape": final_vectors.shape,
             "method": method,
+            "provider": provider,
             "n_samples": final_vectors.shape[0],
             "n_features": final_vectors.shape[1],
             "column_metadata": column_metadata,

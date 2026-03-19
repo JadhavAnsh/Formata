@@ -8,6 +8,7 @@ import os
 from app.jobs.store import job_store
 from app.guards.appwrite_auth import verify_appwrite_session
 from app.utils.logger import logger
+from app.utils.job_utils import get_job_with_fallback
 
 router = APIRouter(prefix="/errors", tags=["errors"])
 
@@ -23,7 +24,7 @@ async def download_error_report(
     - Only available if job has errors
     """
     try:
-        job = job_store.get_job(job_id)
+        job = await get_job_with_fallback(job_id)
         if not job:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -82,7 +83,7 @@ async def stream_job_errors(
     - Implementation pending
     """
     try:
-        job = job_store.get_job(job_id)
+        job = await get_job_with_fallback(job_id)
         if not job:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
