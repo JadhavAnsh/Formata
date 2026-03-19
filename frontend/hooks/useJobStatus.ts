@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { statusService } from '@/services/status.service';
+import { useAuth } from '@/context/AuthContext';
 import type { Job } from '@/types/job';
 
 interface UseJobStatusOptions {
@@ -17,6 +18,7 @@ export function useJobStatus({
   enabled = true,
   onStatusChange,
 }: UseJobStatusOptions) {
+  const { getJwt } = useAuth();
   const [job, setJob] = useState<Job | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -28,7 +30,10 @@ export function useJobStatus({
     setError(null);
 
     try {
-      const result = await statusService.getJobStatus(jobId);
+      const jwt = await getJwt();
+      if (!jwt) throw new Error('No JWT available');
+      
+      const result = await statusService.getJobStatus(jobId, jwt);
       setJob(result);
       onStatusChange?.(result);
     } catch (err) {
@@ -37,7 +42,7 @@ export function useJobStatus({
     } finally {
       setIsLoading(false);
     }
-  }, [jobId, enabled, onStatusChange]);
+  }, [jobId, enabled, onStatusChange, getJwt]);
 
   useEffect(() => {
     if (!jobId || !enabled) return;

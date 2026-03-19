@@ -38,13 +38,11 @@ async def ingest_data(
         job_data = {
             "user_id": user_id,
             "file_id": request.file_id,
-            "file_name": request.file_name,
-            "file_size": request.file_size or 0,
-            "file_type": request.file_type or get_file_extension(request.file_name),
+            "file-name": request.file_name,
             "status": "pending",
             "progress": 0.0,
             "created_at": datetime.now().isoformat(),
-            "metadata": "{}" # Appwrite usually prefers strings or JSON objects
+            "metadata": "{}"
         }
         
         # Create job document in Appwrite DB
@@ -64,7 +62,9 @@ async def ingest_data(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error ingesting file: {str(e)}")
+        import traceback
+        error_detail = f"Error: {str(e)}\n{traceback.format_exc()}"
+        logger.error(f"Error ingesting file: {error_detail}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error ingesting file: {str(e)}"
