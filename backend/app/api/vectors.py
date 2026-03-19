@@ -11,6 +11,8 @@ from datetime import datetime
 
 from app.jobs.store import job_store, JobStatus
 from app.guards.appwrite_auth import verify_appwrite_session
+from app.services.appwrite_storage import appwrite_storage
+from app.config.settings import settings
 from app.utils.logger import logger
 from app.utils.file_utils import ensure_directory
 from app.utils.job_utils import get_job_with_fallback
@@ -54,7 +56,7 @@ async def generate_vectors(
     - gemini: Google Generative AI (768d)
     """
     try:
-        job = await _get_job_with_fallback(job_id)
+        job = await get_job_with_fallback(job_id)
         if not job:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -82,10 +84,18 @@ async def generate_vectors(
         
         output_path = job.result["output_path"]
         if not os.path.exists(output_path):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Output file not found on disk"
-            )
+            # Try to download result file from Appwrite first if local is missing
+            result_file_id = job.metadata.get("result_file_id") or job.result.get("appwrite_result_file_id")
+            if result_file_id:
+                logger.info(f"Local output file missing, downloading {result_file_id} from Appwrite Storage for vectorization")
+                # Ensure directory exists
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                appwrite_storage.download_file(result_file_id, output_path)
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Output file not found on disk or cloud. Cannot generate vectors."
+                )
         
         logger.info(f"Generating vectors for job {job_id} using method: {request.method}, provider: {request.provider}")
         
@@ -196,15 +206,11 @@ async def download_vectors(
 ):
     """
     Download vectorized data in specified format
-    
-    Formats:
-    - pkl: Python pickle format (smaller file size, Python-native)
-    - h5: HDF5 format (better for large data, language-agnostic, supports chunking)
-    
-    Returns downloadable vector file ready for LLM feeding
+    - Priority: Appwrite Storage (if previously generated)
+    - Fallback: On-the-fly generation from output file
     """
     try:
-        job = await _get_job_with_fallback(job_id)
+        job = await get_job_with_fallback(job_id)
         if not job:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -224,32 +230,52 @@ async def download_vectors(
                 detail=f"Job is in {job.status.value} state. Only completed jobs have vectors."
             )
         
-        if not job.result or not job.result.get("output_path"):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Output file not found"
-            )
-        
-        # Validate format
         format = format.lower()
         if format not in ["pkl", "h5"]:
             raise ValueError("Format must be 'pkl' or 'h5'")
+
+        # Priority 1: Check metadata for Appwrite file IDs
+        vector_info = job.metadata.get("vector_info", {})
+        file_id = vector_info.get(f"{format}_file_id")
+        
+        if file_id:
+            local_temp_path = os.path.join(settings.output_dir, f"dl_vectors_{job_id}.{format}")
+            logger.info(f"Downloading {format} vectors {file_id} from Appwrite Storage")
+            appwrite_storage.download_file(file_id, local_temp_path)
+            
+            return FileResponse(
+                path=local_temp_path,
+                filename=f"{job_id}_vectors.{format}",
+                media_type="application/octet-stream" if format == "pkl" else "application/x-hdf"
+            )
+
+        # Priority 2: On-the-fly generation fallback
+        if not job.result or not job.result.get("output_path"):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Output file not found in job result"
+            )
         
         output_path = job.result["output_path"]
         if not os.path.exists(output_path):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Output file not found on disk"
-            )
+            # Try to download result file from Appwrite first if local is missing
+            result_file_id = job.metadata.get("result_file_id")
+            if result_file_id:
+                logger.info(f"Local output file missing, downloading {result_file_id} from Appwrite Storage")
+                appwrite_storage.download_file(result_file_id, output_path)
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Output file not found on disk or cloud"
+                )
         
-        logger.info(f"Downloading vectors for job {job_id} in {format} format")
+        logger.info(f"Generating vectors on-the-fly for job {job_id} in {format} format")
         
         # Read output file
         if output_path.endswith('.csv'):
             df = pd.read_csv(output_path)
         elif output_path.endswith('.json'):
             with open(output_path, 'r') as f:
-                import json
                 data = json.load(f)
                 records = data.get('records', data) if isinstance(data, dict) else data
                 df = pd.DataFrame(records)
@@ -257,9 +283,7 @@ async def download_vectors(
             raise ValueError("Unsupported output file format")
         
         # Get vectorization method from metadata or use default
-        method = "hybrid"
-        if job.metadata and 'vector_method' in job.metadata:
-            method = job.metadata['vector_method']
+        method = vector_info.get('method', "hybrid")
         
         # Generate vectors
         vectors, metadata = dataframe_to_vectors(df, method=method)
@@ -279,17 +303,10 @@ async def download_vectors(
                 media_type = "application/x-hdf"
                 filename = f"{job_id}_vectors.h5"
             
-            logger.info(f"Vectors saved to {temp_path}, size: {os.path.getsize(temp_path)} bytes")
-            
             return FileResponse(
                 path=temp_path,
                 filename=filename,
-                media_type=media_type,
-                headers={
-                    "Content-Disposition": f"attachment; filename={filename}",
-                    "X-Vector-Shape": str(vectors.shape),
-                    "X-Vector-Method": method
-                }
+                media_type=media_type
             )
             
         except Exception as e:
@@ -324,7 +341,7 @@ async def get_vector_info(
     Returns metadata about the vectors that would be generated
     """
     try:
-        job = await _get_job_with_fallback(job_id)
+        job = await get_job_with_fallback(job_id)
         if not job:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

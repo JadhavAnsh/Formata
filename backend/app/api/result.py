@@ -54,15 +54,23 @@ async def download_job_result(
         
         if result_file_id:
             local_temp_path = os.path.join(settings.output_dir, f"dl_{job_id}")
-            logger.info(f"Downloading result file {result_file_id} from Appwrite Storage")
+            logger.info(f"Downloading result file {result_file_id} from Appwrite Storage to {local_temp_path}")
+            
+            # Ensure directory exists
+            os.makedirs(settings.output_dir, exist_ok=True)
+            
             appwrite_storage.download_file(result_file_id, local_temp_path)
             
-            # Appwrite doesn't easily give extension without another call, assume CSV or check metadata
-            return FileResponse(
-                path=local_temp_path,
-                filename=f"{job_id}_result",
-                background=None
-            )
+            # Check if file exists after download
+            if os.path.exists(local_temp_path):
+                # Appwrite doesn't easily give extension without another call, assume CSV or check metadata
+                return FileResponse(
+                    path=local_temp_path,
+                    filename=f"{job_id}_result",
+                    media_type="text/csv"
+                )
+            else:
+                logger.error(f"File {local_temp_path} not found after Appwrite download")
 
         # Priority 2: Fallback to local disk
         if job.result and job.result.get("output_path"):

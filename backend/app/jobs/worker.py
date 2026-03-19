@@ -61,14 +61,30 @@ async def process_job_async(job_id: str, file_path: str, config: Dict[str, Any])
             result_file_id = appwrite_storage.upload_file(result["output_path"])
             result["appwrite_result_file_id"] = result_file_id
         
+        # Upload reports to Appwrite Storage
+        profile_file_id = None
+        if result.get("reports", {}).get("clean_profile") and os.path.exists(result["reports"]["clean_profile"]):
+            logger.info(f"Uploading profile report to Appwrite Storage...")
+            profile_file_id = appwrite_storage.upload_file(result["reports"]["clean_profile"])
+            result["appwrite_profile_file_id"] = profile_file_id
+            
+        error_file_id = None
+        if result.get("reports", {}).get("error_report") and os.path.exists(result["reports"]["error_report"]):
+            logger.info(f"Uploading error report to Appwrite Storage...")
+            error_file_id = appwrite_storage.upload_file(result["reports"]["error_report"])
+            result["appwrite_error_file_id"] = error_file_id
+
         # Merge result into metadata for DB persistence
         metadata = result.get("metadata", {})
         metadata["summary"] = result.get("summary", {})
         metadata["result_file_id"] = result_file_id
+        metadata["profile_file_id"] = profile_file_id
+        metadata["error_file_id"] = error_file_id
         
         # Update JobStore (updates DB)
-        job_store.set_job_result(job_id, result)
+        # Note: We call set_job_metadata first, then set_job_result will merge the result key into it
         job_store.set_job_metadata(job_id, metadata)
+        job_store.set_job_result(job_id, result)
         job_store.update_job_status(job_id, JobStatus.COMPLETED)
         job_store.update_job_progress(job_id, 1.0)
         

@@ -9,9 +9,11 @@ import { useResult } from '@/hooks/useResult';
 import { resultService } from '@/services/result.service';
 import { vectorService } from '@/services/vector.service';
 import { useAuth } from '@/context/AuthContext';
-import { Download, FileText, RotateCcw, Brain, CheckCircle2, Loader2 } from 'lucide-react';
+import { PreviewTable } from '@/components/PreviewTable';
+import { Download, FileText, RotateCcw, Brain, CheckCircle2, Loader2, Table as TableIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface ResultPageProps {
   params: Promise<{
@@ -34,6 +36,7 @@ export default function ResultPage({ params }: ResultPageProps) {
   const [vectorError, setVectorError] = useState<string | null>(null);
   const [vectorMethod, setVectorMethod] = useState<'hybrid' | 'text_only' | 'numeric'>('hybrid');
   const [vectorProvider, setVectorProvider] = useState<'local' | 'gemini'>('local');
+  const [activeTab, setActiveTab] = useState('after');
 
   useEffect(() => {
     params.then((p) => setjob_id(p.job_id));
@@ -136,11 +139,14 @@ export default function ResultPage({ params }: ResultPageProps) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Button
                     className="w-full"
-                    onClick={() => {
+                    onClick={async () => {
                       if (!job_id) return;
-                      resultService.downloadResult(job_id).catch((err) => {
+                      try {
+                        const jwt = await getJwt();
+                        await resultService.downloadResult(job_id, jwt);
+                      } catch (err) {
                         console.error('Download failed:', err);
-                      });
+                      }
                     }}
                   >
                     <Download className="mr-2 size-4" />
@@ -185,11 +191,14 @@ export default function ResultPage({ params }: ResultPageProps) {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <Button
                         variant="secondary"
-                        onClick={() => {
+                        onClick={async () => {
                           if (!job_id) return;
-                          resultService.downloadVectorPkl(job_id).catch((err) => {
+                          try {
+                            const jwt = await getJwt();
+                            await resultService.downloadVectorPkl(job_id, jwt);
+                          } catch (err) {
                             console.error('Download failed:', err);
-                          });
+                          }
                         }}
                       >
                         <Download className="mr-2 size-4" />
@@ -197,11 +206,14 @@ export default function ResultPage({ params }: ResultPageProps) {
                       </Button>
                       <Button
                         variant="secondary"
-                        onClick={() => {
+                        onClick={async () => {
                           if (!job_id) return;
-                          resultService.downloadVectorH5(job_id).catch((err) => {
+                          try {
+                            const jwt = await getJwt();
+                            await resultService.downloadVectorH5(job_id, jwt);
+                          } catch (err) {
                             console.error('Download failed:', err);
-                          });
+                          }
                         }}
                       >
                         <Download className="mr-2 size-4" />
@@ -363,6 +375,46 @@ export default function ResultPage({ params }: ResultPageProps) {
               </Card>
             </div>
           ) : null}
+
+          {(result?.beforeData || result?.afterData) && (
+            <div className="mt-8 space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <TableIcon className="size-5 text-primary" />
+                <h3 className="text-lg font-medium">Data Preview</h3>
+              </div>
+              
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <TabsList className="mb-4">
+                  <TabsTrigger value="after">Processed Data</TabsTrigger>
+                  <TabsTrigger value="before">Original Data</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="after" className="mt-0">
+                  <Card>
+                    <CardContent className="p-0">
+                      <PreviewTable 
+                        data={result.afterData?.rows || []} 
+                        rowCount={result.afterData?.rows?.length}
+                        totalRows={result.afterData?.rowCount}
+                      />
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+                
+                <TabsContent value="before" className="mt-0">
+                  <Card>
+                    <CardContent className="p-0">
+                      <PreviewTable 
+                        data={result.beforeData?.rows || []} 
+                        rowCount={result.beforeData?.rows?.length}
+                        totalRows={result.beforeData?.rowCount}
+                      />
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
+            </div>
+          )}
         </div>
       </div>
     </div>

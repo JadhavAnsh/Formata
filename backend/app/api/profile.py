@@ -2,6 +2,8 @@
 API endpoints for data profiling reports
 """
 from fastapi import APIRouter, HTTPException, Path, Depends
+from fastapi.responses import FileResponse
+import os
 from app.jobs.store import job_store
 from app.guards.appwrite_auth import verify_appwrite_session
 from app.utils.logger import logger
@@ -55,21 +57,16 @@ async def get_profile(
         
         report_path = job.metadata["clean_profile_path"]
         
-        # Read HTML report
-        try:
-            with open(report_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-        except FileNotFoundError:
+        if not os.path.exists(report_path):
             raise HTTPException(status_code=404, detail="Profile report file not found on disk")
         
         logger.info(f"Retrieved profile for job {job_id}")
         
-        return {
-            "job_id": job_id,
-            "report_path": report_path,
-            "content_type": "text/html",
-            "content": content
-        }
+        return FileResponse(
+            path=report_path,
+            media_type="text/html",
+            filename=f"{job_id}_profile.html"
+        )
     
     except HTTPException:
         raise

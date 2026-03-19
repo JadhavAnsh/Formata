@@ -166,13 +166,19 @@ class JobStore:
             return False
     
     def set_job_result(self, job_id: str, result: Dict[str, Any]) -> bool:
-        """Set job result in DB"""
-        job = self.get_job(job_id)
-        if not job:
-            return False
-            
+        """Set job result in DB by merging with existing metadata"""
         try:
-            metadata = job.metadata
+            doc = appwrite_db.get_job_document(job_id)
+            metadata_raw = doc.get("metadata", "{}")
+            metadata = {}
+            if isinstance(metadata_raw, str):
+                try:
+                    metadata = json.loads(metadata_raw)
+                except:
+                    pass
+            else:
+                metadata = metadata_raw or {}
+                
             metadata["result"] = result
             return appwrite_db.update_job_document(job_id, {"metadata": json.dumps(metadata)})
         except Exception as e:
@@ -180,9 +186,22 @@ class JobStore:
             return False
     
     def set_job_metadata(self, job_id: str, metadata: Dict[str, Any]) -> bool:
-        """Set job metadata in DB"""
+        """Set job metadata in DB by merging with existing metadata"""
         try:
-            return appwrite_db.update_job_document(job_id, {"metadata": json.dumps(metadata)})
+            doc = appwrite_db.get_job_document(job_id)
+            metadata_raw = doc.get("metadata", "{}")
+            existing_metadata = {}
+            if isinstance(metadata_raw, str):
+                try:
+                    existing_metadata = json.loads(metadata_raw)
+                except:
+                    pass
+            else:
+                existing_metadata = metadata_raw or {}
+            
+            # Merge existing metadata with new metadata
+            existing_metadata.update(metadata)
+            return appwrite_db.update_job_document(job_id, {"metadata": json.dumps(existing_metadata)})
         except Exception as e:
             logger.error(f"Failed to set job metadata {job_id}: {str(e)}")
             return False

@@ -67,24 +67,38 @@ export async function GET(request: Request, { params }: { params: Promise<{ job_
   const url = new URL(request.url);
   const theme = url.searchParams.get('theme') === 'dark' ? 'dark' : url.searchParams.get('theme') === 'light' ? 'light' : undefined;
 
+  const jwt = request.headers.get('X-Appwrite-JWT') || url.searchParams.get('jwt');
+
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
   const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
   try {
     // Call the backend API to get the profile report
     const apiUrl = `${API_BASE_URL}/profile/${job_id}`;
+    console.log(`Fetching profile from: ${apiUrl} (JWT provided: ${!!jwt})`);
     const response = await fetch(apiUrl, {
       headers: {
+        ...(jwt && { 'X-Appwrite-JWT': jwt }),
         ...(API_KEY && { 'X-API-Key': API_KEY }),
       },
     });
 
     if (!response.ok) {
+      console.error(`Backend returned ${response.status}: ${response.statusText}`);
       throw new Error(`Failed to fetch profile: ${response.statusText}`);
     }
 
-    const profileData = await response.json();
-    const html = profileData.content || profileData.html;
+    // Since we changed backend to return FileResponse (HTML), 
+    // we should check if we got JSON or directly the HTML
+    const contentType = response.headers.get('Content-Type');
+    let html = '';
+    
+    if (contentType?.includes('application/json')) {
+      const profileData = await response.json();
+      html = profileData.content || profileData.html;
+    } else {
+      html = await response.text();
+    }
 
     if (!html) {
       throw new Error('No HTML content in profile response');

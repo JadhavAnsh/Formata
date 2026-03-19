@@ -183,7 +183,7 @@
               "host": ["{{base_url}}"],
               "path": ["status", "{{job_id}}"]
             },
-            "description": "Get real-time status and progress (0.0-1.0)\n\nReturns:\n- status: pending | processing | completed | failed\n- progress: 0.0 to 1.0\n- rows_before: Original row count\n- rows_after: Processed row count\n- errors: Array of validation errors\n- metadata: Processing metadata"
+            "description": "Get real-time status and progress (0.0-1.0)\n\nReturns:\n- status: pending | processing | completed | failed\n- progress: 0.0 to 1.0\n- rows_before: Original row count\n- rows_after: Processed row count\n- before_data: Preview of original data (first 50 rows)\n- after_data: Preview of processed data (first 50 rows)\n- errors: Array of validation errors\n- metadata: Processing metadata"
           },
           "response": []
         }

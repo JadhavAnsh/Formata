@@ -13,12 +13,16 @@ http://localhost:8000
 
 ## Authentication
 
-All protected endpoints require an API key header:
+All protected endpoints require an Appwrite JWT token header (for user authentication) or an API key (for internal/service use):
 
 ```
 Headers:
+  X-Appwrite-JWT: your_appwrite_jwt_here
+  # OR
   X-API-Key: your_api_key_here
 ```
+
+Note: Most endpoints in the current implementation prefer `X-Appwrite-JWT`.
 
 ---
 
@@ -353,7 +357,29 @@ None
       "message": "Column 'age' has invalid values in rows 5, 12, 23"
     }
   ],
-  "result": null,
+  "result": {
+    "job_id": "550e8400-e29b-41d4-a716-446655440000",
+    "status": "completed",
+    "rows_before": 1000,
+    "rows_after": 950,
+    "before_data": {
+      "rowCount": 1000,
+      "columns": ["name", "age", "email"],
+      "rows": [{"name": "John", "age": 30, "email": "john@example.com"}, "..."]
+    },
+    "after_data": {
+      "rowCount": 950,
+      "columns": ["name", "age", "email"],
+      "rows": [{"name": "John", "age": 30, "email": "john@example.com"}, "..."]
+    },
+    "summary": {
+      "rows_initial": 1000,
+      "rows_after": 950,
+      "duplicates_removed": 20,
+      "outliers_removed": 5,
+      "quality_score": {"overall_score": 92}
+    }
+  },
   "metadata": {}
 }
 ```

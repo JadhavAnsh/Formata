@@ -103,6 +103,14 @@ class ProcessingPipeline:
             
             initial_rows = len(df)
             logger.info(f"File parsed. Rows: {len(df)}, Columns: {len(df.columns)}")
+            
+            # Capture before data preview (first 50 rows)
+            result["before_data"] = {
+                "rowCount": initial_rows,
+                "columns": list(df.columns),
+                "rows": df.head(50).to_dict(orient='records')
+            }
+            
             await asyncio.sleep(0)
             
             # ============ STEP 3: Normalize data (25% progress) ============
@@ -236,6 +244,14 @@ class ProcessingPipeline:
                 logger.info("Outlier removal is disabled in config")
             
             result["rows_after"] = len(df)
+            
+            # Capture after data preview (first 50 rows)
+            result["after_data"] = {
+                "rowCount": len(df),
+                "columns": list(df.columns),
+                "rows": df.head(50).to_dict(orient='records')
+            }
+            
             await asyncio.sleep(0)
             
             # ============ STEP 6: Validate results (65% progress) ============

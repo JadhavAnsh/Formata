@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
 
 import { Button } from '@/components/ui/button';
 
@@ -12,13 +13,16 @@ interface ErrorReportPageProps {
 }
 
 export default function ErrorReportPage({ params }: ErrorReportPageProps) {
+  const { getJwt } = useAuth();
   const [jobId, setJobId] = useState<string | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [isIframeLoading, setIsIframeLoading] = useState(true);
+  const [jwt, setJwt] = useState<string | null>(null);
 
   useEffect(() => {
     params.then((p) => setJobId(p.job_id));
-  }, [params]);
+    getJwt().then(setJwt);
+  }, [params, getJwt]);
 
   useEffect(() => {
     const applyTheme = () => {
@@ -35,8 +39,9 @@ export default function ErrorReportPage({ params }: ErrorReportPageProps) {
   const iframeSrc = useMemo(() => {
     if (!jobId) return null;
     const searchParams = new URLSearchParams({ theme });
+    if (jwt) searchParams.append('jwt', jwt);
     return `/error-report/${jobId}/file?${searchParams.toString()}`;
-  }, [jobId, theme]);
+  }, [jobId, theme, jwt]);
 
   const iframeKey = useMemo(() => {
     return iframeSrc || '';
