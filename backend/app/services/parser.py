@@ -119,3 +119,63 @@ def parse_markdown(file_path: str) -> str:
 
     except Exception as e:
         raise RuntimeError(f"Failed to parse Markdown: {str(e)}")
+
+
+class DataParser:
+    """Unified parser interface for multiple file formats"""
+
+    def parse(self, file_path: str) -> Dict[str, Any]:
+        """Parse any supported file and return a structured dict"""
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        ext = os.path.splitext(file_path)[1].lower()
+
+        try:
+            if ext == ".csv":
+                df = parse_csv(file_path)
+                return {
+                    "records": df.to_dict(orient="records"),
+                    "columns": list(df.columns),
+                    "total_rows": len(df),
+                    "format": "csv"
+                }
+
+            elif ext in [".xlsx", ".xls"]:
+                df = parse_excel(file_path)
+                return {
+                    "records": df.to_dict(orient="records"),
+                    "columns": list(df.columns),
+                    "total_rows": len(df),
+                    "format": "excel"
+                }
+
+            elif ext == ".json":
+                data = parse_json(file_path)
+                # parse_json already returns {"records": [...]}
+                records = data.get("records", [])
+                columns = []
+                if records and isinstance(records[0], dict):
+                    columns = list(records[0].keys())
+                
+                return {
+                    "records": records,
+                    "columns": columns,
+                    "total_rows": len(records),
+                    "format": "json"
+                }
+
+            elif ext == ".md":
+                content = parse_markdown(file_path)
+                return {
+                    "records": [{"content": content}],
+                    "columns": ["content"],
+                    "total_rows": 1,
+                    "format": "markdown"
+                }
+
+            else:
+                raise ValueError(f"Unsupported file extension: {ext}")
+
+        except Exception as e:
+            raise RuntimeError(f"DataParser error: {str(e)}")
