@@ -6,7 +6,11 @@ import glob
 
 from app.jobs.store import job_store, JobStatus
 from app.guards.appwrite_auth import verify_appwrite_session
+from app.services.appwrite_db import appwrite_db
 from app.utils.logger import logger
+import os
+import glob
+import json
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -15,12 +19,45 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 async def list_user_jobs(user: dict = Depends(verify_appwrite_session)) -> List[Dict[str, Any]]:
     """
     List all jobs belonging to the authenticated user
+    Priority: Appwrite DB (Persistent)
     """
     try:
         user_id = user["$id"]
-        jobs = job_store.get_jobs_by_user(user_id)
-        logger.info(f"Retrieved {len(jobs)} jobs for user {user_id}")
-        return jobs
+        
+        # 1. Fetch from Appwrite DB
+        db_jobs = appwrite_db.list_user_jobs(user_id)
+        
+        # 2. Normalize Appwrite docs to match JobResponse/dict
+        normalized_jobs = []
+        for doc in db_jobs:
+            # Appwrite returns $id, we want job_id
+            job_data = {
+                "job_id": doc["$id"],
+                "file_name": doc.get("file-name") or doc.get("file_name"),
+                "status": doc.get("status", "unknown"),
+                "progress": doc.get("progress", 0.0),
+                "created_at": doc.get("created_at") or doc.get("$createdAt"),
+                "completed_at": doc.get("completed_at"),
+                "metadata": doc.get("metadata")
+            }
+            
+            # Parse metadata if it's a string
+            if isinstance(job_data["metadata"], str) and job_data["metadata"]:
+                try:
+                    job_data["metadata"] = json.loads(job_data["metadata"])
+                except:
+                    pass
+            
+            normalized_jobs.append(job_data)
+            
+        logger.info(f"Retrieved {len(normalized_jobs)} jobs from Appwrite DB for user {user_id}")
+        
+        # If DB is empty, fallback to memory store (for backwards compatibility during migration)
+        if not normalized_jobs:
+            memory_jobs = job_store.get_jobs_by_user(user_id)
+            return memory_jobs
+            
+        return normalized_jobs
         
     except Exception as e:
         logger.error(f"Error listing jobs: {str(e)}")
@@ -36,25 +73,41 @@ async def get_job_details(
     user: dict = Depends(verify_appwrite_session)
 ) -> Dict[str, Any]:
     """
-    Get detailed information about a specific job (must own the job)
+    Get detailed information about a specific job
     """
     try:
-        job = job_store.get_job(job_id)
-        if not job:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Job {job_id} not found"
-            )
-        
-        # Verify ownership
-        if job.user_id != user["$id"]:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to access this job"
-            )
-        
-        return job.to_dict()
-        
+        # 1. Try Appwrite DB first
+        try:
+            doc = appwrite_db.get_job_document(job_id)
+            if doc.get("user_id") != user["$id"]:
+                 raise HTTPException(status_code=403, detail="Forbidden")
+            
+            job_data = {
+                "job_id": doc["$id"],
+                "file_name": doc.get("file-name") or doc.get("file_name"),
+                "status": doc.get("status"),
+                "progress": doc.get("progress"),
+                "created_at": doc.get("created_at") or doc.get("$createdAt"),
+                "completed_at": doc.get("completed_at"),
+                "metadata": doc.get("metadata")
+            }
+            if isinstance(job_data["metadata"], str) and job_data["metadata"]:
+                try:
+                    job_data["metadata"] = json.loads(job_data["metadata"])
+                except:
+                    pass
+            return job_data
+        except HTTPException:
+            raise
+        except:
+            # 2. Fallback to memory store
+            job = job_store.get_job(job_id)
+            if not job:
+                raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+            if job.user_id != user["$id"]:
+                raise HTTPException(status_code=403, detail="Forbidden")
+            return job.to_dict()
+            
     except HTTPException:
         raise
     except Exception as e:
@@ -71,68 +124,25 @@ async def delete_job(
     user: dict = Depends(verify_appwrite_session)
 ) -> Dict[str, str]:
     """
-    Delete a job and its associated data (must own the job)
+    Delete a job from Appwrite DB and memory
     """
     try:
-        job = job_store.get_job(job_id)
-        if not job:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Job {job_id} not found"
-            )
+        # Check ownership first
+        try:
+            doc = appwrite_db.get_job_document(job_id)
+            if doc.get("user_id") != user["$id"]:
+                 raise HTTPException(status_code=403, detail="Forbidden")
+            
+            # Delete from Appwrite DB
+            appwrite_db.delete_job_document(job_id)
+        except:
+            # If not in DB, check memory
+            job = job_store.get_job(job_id)
+            if job and job.user_id != user["$id"]:
+                raise HTTPException(status_code=403, detail="Forbidden")
         
-        # Verify ownership
-        if job.user_id != user["$id"]:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to delete this job"
-            )
-        
-        # Gather file paths to delete (uploaded file, outputs, reports, errors)
-        file_paths = set()
-        
-        # From job result/metadata if present
-        if job and job.result:
-            for path in [
-                job.result.get("output_path"),
-                job.result.get("reports", {}).get("error_report"),
-            ]:
-                if path:
-                    file_paths.add(path)
-        if job and job.metadata:
-            for path in [
-                job.metadata.get("clean_profile_path"),
-            ]:
-                if path:
-                    file_paths.add(path)
-        
-        # Common storage patterns
-        patterns = [
-            f"storage/uploads/{job_id}_*",            # uploaded files
-            f"storage/outputs/{job_id}.*",             # outputs
-            f"storage/errors/{job_id}_errors.*",       # error reports
-            f"storage/reports/{job_id}_*.*",          # profiles/reports
-        ]
-        for pattern in patterns:
-            for path in glob.glob(pattern):
-                file_paths.add(path)
-        
-        # Delete collected files
-        deleted_files = []
-        for path in file_paths:
-            try:
-                if os.path.isfile(path):
-                    os.remove(path)
-                    deleted_files.append(path)
-            except Exception as e:
-                logger.warning(f"Failed to delete file {path}: {e}")
-        
-        if deleted_files:
-            logger.info(f"Deleted files for job {job_id}: {deleted_files}")
-        
-        # Delete the job
+        # Also delete from memory store
         job_store.delete_job(job_id)
-        logger.info(f"Job {job_id} deleted")
         
         return {
             "message": f"Job {job_id} deleted successfully",

@@ -492,7 +492,7 @@
               "host": ["{{base_url}}"],
               "path": ["jobs"]
             },
-            "description": "Get all jobs with current status"
+            "description": "Get all jobs for the current user from Appwrite DB"
           },
           "response": []
         },

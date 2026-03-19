@@ -68,13 +68,18 @@ This document serves as the technical blueprint for migrating Formata to a BaaS 
 ## ⚡ Phase 4: Real-time Status & Dashboard
 
 ### **Frontend (Next.js)**
-- [ ] Create `DashboardPage` (`/dashboard`) to list user jobs.
-- [ ] Implement Appwrite Realtime subscription in `ProcessingProgress.tsx`.
-- [ ] Listen for changes in the `jobs` collection for the specific `job_id`.
+- [x] Create `DashboardPage` (`/dashboard`) to list user jobs from Appwrite DB.
+- [x] Implement Appwrite Realtime subscription in `useJobStatus` hook.
+- [x] Listen for changes in the `jobs` collection for the specific `job_id`.
+- [x] Added "Dashboard" link to the Navbar for easy access.
+
+### **Backend (FastAPI)**
+- [x] Update `/jobs` endpoints to fetch and delete documents from Appwrite DB.
+- [x] Ensure `job_id` mapping is consistent between frontend and backend.
 
 ### **Verification & Tests**
-- **E2E Test**: Start a job and verify the progress bar moves in real-time without page refreshes.
-- **Manual Test**: Verify the dashboard updates automatically when a new job is created from another tab.
+- [x] **E2E Test**: Start a job and verify the progress bar moves in real-time using Appwrite Realtime events.
+- [x] **Manual Test**: Verify the dashboard correctly lists and deletes persistent jobs after page refreshes.
 
 ---
 

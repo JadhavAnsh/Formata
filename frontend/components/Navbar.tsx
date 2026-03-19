@@ -77,6 +77,9 @@ export function Navbar() {
                 <LogOut size={16} className="mr-2" />
                 Logout
               </Button>
+              <Button size="sm" variant="ghost" className="rounded-lg px-4" asChild>
+                <Link href="/dashboard">Dashboard</Link>
+              </Button>
               <Button size="sm" className="rounded-lg px-4" asChild>
                 <Link href="/ingest">Ingest</Link>
               </Button>
@@ -111,6 +114,9 @@ export function Navbar() {
                     <span>{user.name}</span>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/dashboard">Dashboard</Link>
+                  </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link href="/ingest">Ingest Data</Link>
                   </DropdownMenuItem>
