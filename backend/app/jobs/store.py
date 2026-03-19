@@ -17,8 +17,9 @@ class JobStatus(str, Enum):
 class Job:
     """Job entity"""
     
-    def __init__(self, job_id: str, file_name: str, file_path: str):
+    def __init__(self, job_id: str, file_name: str, file_path: str, user_id: str = None):
         self.job_id = job_id
+        self.user_id = user_id
         self.file_name = file_name
         self.file_path = file_path
         self.status = JobStatus.PENDING
@@ -34,6 +35,7 @@ class Job:
         """Convert job to dictionary"""
         return {
             "job_id": self.job_id,
+            "user_id": self.user_id,
             "file_name": self.file_name,
             "status": self.status.value,
             "created_at": self.created_at.isoformat(),
@@ -54,10 +56,10 @@ class JobStore:
     def __init__(self):
         self.jobs: Dict[str, Job] = {}
     
-    def create_job(self, file_name: str, file_path: str) -> str:
+    def create_job(self, file_name: str, file_path: str, user_id: str = None) -> str:
         """Create a new job entry and return job_id"""
         job_id = str(uuid.uuid4())
-        job = Job(job_id, file_name, file_path)
+        job = Job(job_id, file_name, file_path, user_id)
         self.jobs[job_id] = job
         return job_id
     
@@ -115,6 +117,10 @@ class JobStore:
     def get_all_jobs(self) -> List[Dict[str, Any]]:
         """Get all jobs as dictionaries"""
         return [job.to_dict() for job in self.jobs.values()]
+    
+    def get_jobs_by_user(self, user_id: str) -> List[Dict[str, Any]]:
+        """Get all jobs for a specific user"""
+        return [job.to_dict() for job in self.jobs.values() if job.user_id == user_id]
     
     def delete_job(self, job_id: str) -> bool:
         """Delete a job"""

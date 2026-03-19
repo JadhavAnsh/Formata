@@ -1,15 +1,19 @@
 """
 API endpoints for data profiling reports
 """
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, HTTPException, Path, Depends
 from app.jobs.store import job_store
+from app.guards.appwrite_auth import verify_appwrite_session
 from app.utils.logger import logger
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
 
 @router.get("/{job_id}")
-async def get_profile(job_id: str = Path(..., description="Job ID")):
+async def get_profile(
+    job_id: str = Path(..., description="Job ID"),
+    user: dict = Depends(verify_appwrite_session)
+):
     """
     Get data profile report (HTML format)
     
@@ -19,6 +23,13 @@ async def get_profile(job_id: str = Path(..., description="Job ID")):
         job = job_store.get_job(job_id)
         if not job:
             raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        
+        # Verify ownership
+        if job.user_id != user["$id"]:
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have permission to access this job"
+            )
         
         # Check if job is still processing
         if job.status.value in ["pending", "processing"]:

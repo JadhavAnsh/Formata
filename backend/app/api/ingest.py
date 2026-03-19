@@ -1,9 +1,10 @@
 # /ingest endpoint
-from fastapi import APIRouter, UploadFile, File, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, HTTPException, status, Depends
 import shutil
 import os
 
 from app.jobs.store import job_store
+from app.guards.appwrite_auth import verify_appwrite_session
 from app.models.response import JobResponse
 from app.utils.file_utils import ensure_directory, get_file_extension
 from app.config.settings import settings
@@ -13,7 +14,10 @@ router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 
 @router.post("", response_model=JobResponse)
-async def ingest_data(file: UploadFile = File(...)):
+async def ingest_data(
+    file: UploadFile = File(...),
+    user: dict = Depends(verify_appwrite_session)
+):
     """
     STEP 1: User Uploads File
     STEP 2: Job Created (job_id)
@@ -23,6 +27,7 @@ async def ingest_data(file: UploadFile = File(...)):
     - Returns job_id for tracking
     """
     try:
+        user_id = user["$id"]
         # Validate file extension
         extension = get_file_extension(file.filename)
         valid_extensions = [".csv", ".json", ".xlsx", ".xls", ".md"]
@@ -37,7 +42,7 @@ async def ingest_data(file: UploadFile = File(...)):
         ensure_directory(settings.upload_dir)
         
         # Create job entry
-        job_id = job_store.create_job(file.filename, "")
+        job_id = job_store.create_job(file.filename, "", user_id)
         
         # Save uploaded file
         file_path = os.path.join(settings.upload_dir, f"{job_id}_{file.filename}")

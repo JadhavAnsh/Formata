@@ -1,18 +1,22 @@
 # /result/{job_id} endpoint
 # JOB FLOW: Step 7 - Final Output + Error Report Saved + Step 8 - User Downloads Result
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import FileResponse
 from typing import Dict, Any
 import os
 
 from app.jobs.store import job_store, JobStatus
+from app.guards.appwrite_auth import verify_appwrite_session
 from app.utils.logger import logger
 
 router = APIRouter(prefix="/result", tags=["result"])
 
 
 @router.get("/{job_id}/download")
-async def download_job_result(job_id: str):
+async def download_job_result(
+    job_id: str,
+    user: dict = Depends(verify_appwrite_session)
+):
     """
     STEP 8: User Downloads Result
     - Download processed/cleaned data as file
@@ -24,6 +28,13 @@ async def download_job_result(job_id: str):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Job {job_id} not found"
+            )
+        
+        # Verify ownership
+        if job.user_id != user["$id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to access this job"
             )
         
         if job.status != JobStatus.COMPLETED:

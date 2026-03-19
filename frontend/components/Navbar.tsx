@@ -9,9 +9,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { motion } from "framer-motion"
-import { Menu, Moon, Sun } from "lucide-react"
+import { Menu, Moon, Sun, User, LogOut } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
+import { useAuth } from "@/context/AuthContext"
 
 type Theme = "light" | "dark"
 
@@ -26,6 +27,7 @@ function getInitialTheme(): Theme {
 
 export function Navbar() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
+  const { user, loading, logout } = useAuth()
 
   useEffect(() => {
     localStorage.setItem("theme", theme)
@@ -63,13 +65,33 @@ export function Navbar() {
           {theme === "dark" ? <Sun /> : <Moon />}
         </Button>
         <div className="hidden sm:flex items-center gap-3">
-          <Link href="/login" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-            Log in
-          </Link>
-          <Button size="sm" className="rounded-lg px-4" asChild>
-            <Link href="/ingest">Get Started</Link>
-          </Button>
-          <Button size="sm" className="rounded-lg px-4" asChild>
+          {loading ? (
+            <div className="w-20 h-8 bg-muted animate-pulse rounded-lg" />
+          ) : user ? (
+            <>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground mr-2">
+                <User size={16} />
+                <span>{user.name}</span>
+              </div>
+              <Button size="sm" variant="ghost" className="rounded-lg px-4" onClick={logout}>
+                <LogOut size={16} className="mr-2" />
+                Logout
+              </Button>
+              <Button size="sm" className="rounded-lg px-4" asChild>
+                <Link href="/ingest">Ingest</Link>
+              </Button>
+            </>
+          ) : (
+            <>
+              <Link href="/login" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                Log in
+              </Link>
+              <Button size="sm" className="rounded-lg px-4" asChild>
+                <Link href="/register">Register</Link>
+              </Button>
+            </>
+          )}
+          <Button size="sm" variant="outline" className="rounded-lg px-4" asChild>
             <Link href="/convert">Convert</Link>
           </Button>
         </div>
@@ -82,13 +104,39 @@ export function Navbar() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-44">
-              <DropdownMenuItem asChild>
-                <Link href="/ingest">Get Started</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/convert">Convert</Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
+              {user ? (
+                <>
+                  <DropdownMenuItem className="flex items-center gap-2 font-medium">
+                    <User size={16} />
+                    <span>{user.name}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/ingest">Ingest Data</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/convert">Convert Files</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={logout} className="text-destructive">
+                    <LogOut size={16} className="mr-2" />
+                    Logout
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                <>
+                  <DropdownMenuItem asChild>
+                    <Link href="/login">Login</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/register">Register</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/convert">Convert Files</Link>
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

@@ -1,10 +1,7 @@
 # FastAPI entry point
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from app.guards.auth import verify_api_key
-
-
-
+from app.guards.appwrite_auth import verify_appwrite_session
 
 app = FastAPI(title="Formata API", version="1.0.0")
 
@@ -33,12 +30,12 @@ def health_check():
 
 
 # Register protected routes with API key guard
-app.include_router(ingest, dependencies=[Depends(verify_api_key)])
-app.include_router(process, dependencies=[Depends(verify_api_key)])
-app.include_router(status, dependencies=[Depends(verify_api_key)])
-app.include_router(result, dependencies=[Depends(verify_api_key)])
-app.include_router(errors, dependencies=[Depends(verify_api_key)])
-app.include_router(convert, dependencies=[Depends(verify_api_key)])
-app.include_router(jobs, dependencies=[Depends(verify_api_key)])
-app.include_router(profile, dependencies=[Depends(verify_api_key)])
-app.include_router(vectors, dependencies=[Depends(verify_api_key)])
+app.include_router(ingest, dependencies=[Depends(verify_appwrite_session)])
+app.include_router(process, dependencies=[Depends(verify_appwrite_session)])
+app.include_router(status, dependencies=[Depends(verify_appwrite_session)])
+app.include_router(result, dependencies=[Depends(verify_appwrite_session)])
+app.include_router(errors, dependencies=[Depends(verify_appwrite_session)])
+app.include_router(convert, dependencies=[Depends(verify_appwrite_session)])
+app.include_router(jobs, dependencies=[Depends(verify_appwrite_session)])
+app.include_router(profile, dependencies=[Depends(verify_appwrite_session)])
+app.include_router(vectors, dependencies=[Depends(verify_appwrite_session)])

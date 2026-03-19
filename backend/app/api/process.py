@@ -1,10 +1,11 @@
 # /process/{job_id} endpoint
 # JOB FLOW: Step 3 - Background Worker Starts + Step 4 - Pipeline Executes Step-by-Step
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 
 from app.jobs.store import job_store, JobStatus
+from app.guards.appwrite_auth import verify_appwrite_session
 from app.jobs.worker import start_background_job
 from app.models.response import JobResponse
 from app.utils.logger import logger
@@ -24,7 +25,11 @@ class ProcessConfig(BaseModel):
 
 
 @router.post("/{job_id}", response_model=JobResponse)
-async def process_job(job_id: str, config: ProcessConfig = ProcessConfig()):
+async def process_job(
+    job_id: str,
+    config: ProcessConfig = ProcessConfig(),
+    user: dict = Depends(verify_appwrite_session)
+):
     """
     STEP 3: Background Worker Starts
     STEP 4: Pipeline Executes Step-by-Step
@@ -44,6 +49,13 @@ async def process_job(job_id: str, config: ProcessConfig = ProcessConfig()):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Job {job_id} not found"
+            )
+        
+        # Verify ownership
+        if job.user_id != user["$id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to process this job"
             )
         
         # Check if job is in valid state to process

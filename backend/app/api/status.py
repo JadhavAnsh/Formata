@@ -1,15 +1,19 @@
 # /status/{job_id} endpoint
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from typing import Dict, Any
 
 from app.jobs.store import job_store
+from app.guards.appwrite_auth import verify_appwrite_session
 from app.utils.logger import logger
 
 router = APIRouter(prefix="/status", tags=["status"])
 
 
 @router.get("/{job_id}")
-async def get_job_status(job_id: str) -> Dict[str, Any]:
+async def get_job_status(
+    job_id: str,
+    user: dict = Depends(verify_appwrite_session)
+) -> Dict[str, Any]:
     """
     STEP 6: Progress Updated Continuously
     - Returns current job status
@@ -22,6 +26,13 @@ async def get_job_status(job_id: str) -> Dict[str, Any]:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Job {job_id} not found"
+            )
+        
+        # Verify ownership
+        if job.user_id != user["$id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to access this job"
             )
         
         return job.to_dict()

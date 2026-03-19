@@ -1,6 +1,6 @@
 # /vectors endpoint
 # Vector generation and download for LLM integration
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
@@ -9,6 +9,7 @@ import os
 import pandas as pd
 
 from app.jobs.store import job_store, JobStatus
+from app.guards.appwrite_auth import verify_appwrite_session
 from app.utils.logger import logger
 from app.utils.file_utils import ensure_directory
 from app.services.conversion import csv_to_json
@@ -28,7 +29,11 @@ class VectorRequest(BaseModel):
 
 
 @router.post("/{job_id}/generate")
-async def generate_vectors(job_id: str, request: VectorRequest = VectorRequest()) -> Dict[str, Any]:
+async def generate_vectors(
+    job_id: str,
+    request: VectorRequest = VectorRequest(),
+    user: dict = Depends(verify_appwrite_session)
+) -> Dict[str, Any]:
     """
     Generate vector embeddings from processed data
     
@@ -43,6 +48,13 @@ async def generate_vectors(job_id: str, request: VectorRequest = VectorRequest()
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Job {job_id} not found"
+            )
+        
+        # Verify ownership
+        if job.user_id != user["$id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to access this job"
             )
         
         if job.status != JobStatus.COMPLETED:
@@ -128,7 +140,11 @@ async def generate_vectors(job_id: str, request: VectorRequest = VectorRequest()
 
 
 @router.get("/{job_id}/download")
-async def download_vectors(job_id: str, format: str = "pkl") -> FileResponse:
+async def download_vectors(
+    job_id: str,
+    format: str = "pkl",
+    user: dict = Depends(verify_appwrite_session)
+) -> FileResponse:
     """
     Download vectorized data in specified format
     
@@ -144,6 +160,13 @@ async def download_vectors(job_id: str, format: str = "pkl") -> FileResponse:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Job {job_id} not found"
+            )
+        
+        # Verify ownership
+        if job.user_id != user["$id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to access this job"
             )
         
         if job.status != JobStatus.COMPLETED:
@@ -242,7 +265,10 @@ async def download_vectors(job_id: str, format: str = "pkl") -> FileResponse:
 
 
 @router.get("/{job_id}/info")
-async def get_vector_info(job_id: str) -> Dict[str, Any]:
+async def get_vector_info(
+    job_id: str,
+    user: dict = Depends(verify_appwrite_session)
+) -> Dict[str, Any]:
     """
     Get vector information for a job without downloading
     
@@ -254,6 +280,13 @@ async def get_vector_info(job_id: str) -> Dict[str, Any]:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Job {job_id} not found"
+            )
+        
+        # Verify ownership
+        if job.user_id != user["$id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to access this job"
             )
         
         if job.status != JobStatus.COMPLETED:

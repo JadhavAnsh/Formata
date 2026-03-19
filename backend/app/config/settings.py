@@ -1,5 +1,6 @@
 # Environment variables and settings
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 from typing import Optional
 
 
@@ -7,34 +8,43 @@ class Settings(BaseSettings):
     """
     Application settings loaded from environment variables (.env file)
     """
-    # Application
-    app_name: str
-    debug: bool
+    app_name: str = "Formata API"
+    debug: bool = False
     
-    # API
-    api_host: str
-    api_port: int
+    # API Configuration
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
     
     # Security
-    api_keys: str  # Comma-separated list of valid API keys
+    api_keys: str = "default_key"  # Comma-separated list of valid API keys
+    
+    # Appwrite
+    appwrite_endpoint: str = "http://localhost/v1"
+    appwrite_project_id: str = ""
+    appwrite_api_key: str = ""
+    appwrite_database_id: str = ""
+    appwrite_jobs_collection_id: str = ""
+    appwrite_storage_bucket_id: str = ""
     
     # Storage
-    upload_dir: str
-    output_dir: str
-    error_dir: str
+    upload_dir: str = "storage/uploads"
+    output_dir: str = "storage/outputs"
+    error_dir: str = "storage/errors"
     
-    # Processing
-    max_file_size: int
+    # Limits
+    max_file_size: int = 50 * 1024 * 1024  # 50MB
     
-    # Optional: Database
-    database_url: Optional[str] = None
+    # AI/ML settings (optional)
+    openai_api_key: Optional[str] = None
     
     # Optional: Vector DB for embeddings
     vector_db_url: Optional[str] = None
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
 
 
 # Global settings instance

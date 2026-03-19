@@ -1,23 +1,25 @@
 # /jobs endpoints - Job management and listing
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from typing import Dict, Any, List
 import os
 import glob
 
 from app.jobs.store import job_store, JobStatus
+from app.guards.appwrite_auth import verify_appwrite_session
 from app.utils.logger import logger
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
 @router.get("/", response_model=List[Dict[str, Any]])
-async def list_all_jobs() -> List[Dict[str, Any]]:
+async def list_user_jobs(user: dict = Depends(verify_appwrite_session)) -> List[Dict[str, Any]]:
     """
-    List all jobs with their status and details
+    List all jobs belonging to the authenticated user
     """
     try:
-        jobs = job_store.get_all_jobs()
-        logger.info(f"Retrieved {len(jobs)} jobs")
+        user_id = user["$id"]
+        jobs = job_store.get_jobs_by_user(user_id)
+        logger.info(f"Retrieved {len(jobs)} jobs for user {user_id}")
         return jobs
         
     except Exception as e:
@@ -29,9 +31,12 @@ async def list_all_jobs() -> List[Dict[str, Any]]:
 
 
 @router.get("/{job_id}", response_model=Dict[str, Any])
-async def get_job_details(job_id: str) -> Dict[str, Any]:
+async def get_job_details(
+    job_id: str,
+    user: dict = Depends(verify_appwrite_session)
+) -> Dict[str, Any]:
     """
-    Get detailed information about a specific job
+    Get detailed information about a specific job (must own the job)
     """
     try:
         job = job_store.get_job(job_id)
@@ -39,6 +44,13 @@ async def get_job_details(job_id: str) -> Dict[str, Any]:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Job {job_id} not found"
+            )
+        
+        # Verify ownership
+        if job.user_id != user["$id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to access this job"
             )
         
         return job.to_dict()
@@ -54,19 +66,29 @@ async def get_job_details(job_id: str) -> Dict[str, Any]:
 
 
 @router.delete("/{job_id}")
-async def delete_job(job_id: str) -> Dict[str, str]:
+async def delete_job(
+    job_id: str,
+    user: dict = Depends(verify_appwrite_session)
+) -> Dict[str, str]:
     """
-    Delete a job and its associated data
+    Delete a job and its associated data (must own the job)
     """
     try:
-        if not job_store.job_exists(job_id):
+        job = job_store.get_job(job_id)
+        if not job:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Job {job_id} not found"
             )
         
+        # Verify ownership
+        if job.user_id != user["$id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to delete this job"
+            )
+        
         # Gather file paths to delete (uploaded file, outputs, reports, errors)
-        job = job_store.get_job(job_id)
         file_paths = set()
         
         # From job result/metadata if present
@@ -128,12 +150,13 @@ async def delete_job(job_id: str) -> Dict[str, str]:
 
 
 @router.get("/status/summary", response_model=Dict[str, Any])
-async def get_jobs_summary() -> Dict[str, Any]:
+async def get_jobs_summary(user: dict = Depends(verify_appwrite_session)) -> Dict[str, Any]:
     """
-    Get a summary of all jobs by status
+    Get a summary of user jobs by status
     """
     try:
-        jobs = job_store.get_all_jobs()
+        user_id = user["$id"]
+        jobs = job_store.get_jobs_by_user(user_id)
         
         summary = {
             "total": len(jobs),
