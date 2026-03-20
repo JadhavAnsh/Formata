@@ -14,6 +14,39 @@ import os
 import json
 
 
+def _build_compact_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Build a compact result payload for DB persistence when full payload is too large."""
+    compact = {
+        "job_id": result.get("job_id"),
+        "status": result.get("status"),
+        "rows_before": result.get("rows_before", 0),
+        "rows_after": result.get("rows_after", 0),
+        "output_path": result.get("output_path"),
+        "errors": (result.get("errors") or [])[:200],
+        "reports": result.get("reports", {}),
+        "summary": result.get("summary", {}),
+        "metadata": result.get("metadata", {}),
+    }
+
+    before_data = result.get("before_data")
+    if isinstance(before_data, dict):
+        compact["before_data"] = {
+            "rowCount": before_data.get("rowCount", 0),
+            "columns": before_data.get("columns", []),
+            "rows": (before_data.get("rows") or [])[:10],
+        }
+
+    after_data = result.get("after_data")
+    if isinstance(after_data, dict):
+        compact["after_data"] = {
+            "rowCount": after_data.get("rowCount", 0),
+            "columns": after_data.get("columns", []),
+            "rows": (after_data.get("rows") or [])[:10],
+        }
+
+    return compact
+
+
 async def process_job_async(job_id: str, file_path: str, config: Dict[str, Any]) -> None:
     """
     Process job in background asynchronously
@@ -27,7 +60,9 @@ async def process_job_async(job_id: str, file_path: str, config: Dict[str, Any])
         # Determine if we need to download from Appwrite
         if file_path.startswith("appwrite://"):
             file_id = file_path.replace("appwrite://", "")
-            local_input_path = os.path.join(settings.upload_dir, f"input_{job_id}")
+            source_file_name = config.get("_source_file_name", "")
+            source_ext = os.path.splitext(source_file_name)[1] if source_file_name else ""
+            local_input_path = os.path.join(settings.upload_dir, f"input_{job_id}{source_ext}")
             logger.info(f"Downloading file {file_id} from Appwrite Storage...")
             appwrite_storage.download_file(file_id, local_input_path)
             actual_file_path = local_input_path
@@ -53,6 +88,21 @@ async def process_job_async(job_id: str, file_path: str, config: Dict[str, Any])
             config=config,
             progress_callback=progress_callback
         )
+
+        if result.get("status") != "completed":
+            failure_errors = result.get("errors", []) or ["Pipeline failed without explicit error details"]
+            job_store.set_job_metadata(job_id, {
+                "summary": result.get("summary", {}),
+                "output_path": result.get("output_path"),
+                "output_format": config.get("output_format", "csv")
+            })
+            job_store.set_job_result(job_id, _build_compact_result(result))
+            for error in failure_errors:
+                job_store.add_job_error(job_id, str(error))
+            job_store.update_job_status(job_id, JobStatus.FAILED)
+            job_store.update_job_progress(job_id, 1.0)
+            logger.error(f"Pipeline returned failed status for job {job_id}: {failure_errors}")
+            return
         
         # Upload result file to Appwrite Storage if available
         result_file_id = None
@@ -80,11 +130,20 @@ async def process_job_async(job_id: str, file_path: str, config: Dict[str, Any])
         metadata["result_file_id"] = result_file_id
         metadata["profile_file_id"] = profile_file_id
         metadata["error_file_id"] = error_file_id
+        metadata["output_path"] = result.get("output_path")
+        metadata["output_format"] = config.get("output_format", "csv")
         
         # Update JobStore (updates DB)
         # Note: We call set_job_metadata first, then set_job_result will merge the result key into it
-        job_store.set_job_metadata(job_id, metadata)
-        job_store.set_job_result(job_id, result)
+        if not job_store.set_job_metadata(job_id, metadata):
+            logger.warning(f"Failed to persist job metadata for {job_id}")
+
+        if not job_store.set_job_result(job_id, result):
+            logger.warning(f"Full result payload too large/unavailable for {job_id}; retrying with compact result")
+            compact_result = _build_compact_result(result)
+            if not job_store.set_job_result(job_id, compact_result):
+                logger.warning(f"Failed to persist compact result payload for {job_id}")
+
         job_store.update_job_status(job_id, JobStatus.COMPLETED)
         job_store.update_job_progress(job_id, 1.0)
         
@@ -104,8 +163,11 @@ async def process_job_async(job_id: str, file_path: str, config: Dict[str, Any])
                 pass
 
 
-def start_background_job(job_id: str, file_path: str, config: Dict[str, Any]) -> None:
+def start_background_job(job_id: str, file_path: str, config: Dict[str, Any], file_name: str = "") -> None:
     """
     Start a background processing job (non-blocking)
     """
+    if file_name:
+        config = dict(config)
+        config["_source_file_name"] = file_name
     asyncio.create_task(process_job_async(job_id, file_path, config))

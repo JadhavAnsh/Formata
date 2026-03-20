@@ -67,9 +67,10 @@ async def process_job(
         
         # Prepare config dictionary
         config_dict = config.dict()
+        job_store.set_job_metadata(job_id, {"process_config": config_dict})
         
         # Start background processing
-        start_background_job(job_id, job.file_path, config_dict)
+        start_background_job(job_id, job.file_path, config_dict, job.file_name)
         
         logger.info(f"Processing started for job {job_id}")
         

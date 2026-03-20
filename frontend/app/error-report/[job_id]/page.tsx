@@ -43,6 +43,20 @@ export default function ErrorReportPage({ params }: ErrorReportPageProps) {
     return `/error-report/${jobId}/file?${searchParams.toString()}`;
   }, [jobId, theme, jwt]);
 
+  const pdfHref = useMemo(() => {
+    if (!jobId) return '#';
+    const searchParams = new URLSearchParams({ theme });
+    if (jwt) searchParams.append('jwt', jwt);
+    return `/error-report/${jobId}/pdf?${searchParams.toString()}`;
+  }, [jobId, theme, jwt]);
+
+  const textHref = useMemo(() => {
+    if (!jobId) return '#';
+    const searchParams = new URLSearchParams();
+    if (jwt) searchParams.append('jwt', jwt);
+    return `/error-report/${jobId}/download?${searchParams.toString()}`;
+  }, [jobId, jwt]);
+
   const iframeKey = useMemo(() => {
     return iframeSrc || '';
   }, [iframeSrc]);
@@ -82,9 +96,11 @@ export default function ErrorReportPage({ params }: ErrorReportPageProps) {
               <Link href={`/result/${jobId}`}>Back to Results</Link>
             </Button>
             <Button className="w-full sm:w-auto" asChild>
-              <a href={`/error-report/${jobId}/pdf?theme=${theme}`}>Download PDF</a>
+              <a href={pdfHref}>Download PDF</a>
             </Button>
-            
+            <Button variant="secondary" className="w-full sm:w-auto" asChild>
+              <a href={textHref}>Download TXT</a>
+            </Button>
           </div>
         </div>
 

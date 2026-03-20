@@ -4,6 +4,7 @@ import { ProgressBar } from '@/components/ProgressBar';
 import { useJobStatus } from '@/hooks/useJobStatus';
 import type { FilterParams } from '@/services/preview.service';
 import { processService } from '@/services/process.service';
+import { useAuth } from '@/context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -15,6 +16,7 @@ interface ProcessPageProps {
 
 export default function ProcessPage({ params }: ProcessPageProps) {
   const router = useRouter();
+  const { getJwt } = useAuth();
   const searchParams = useSearchParams();
   const [job_id, setjob_id] = useState<string | null>(null);
   
@@ -73,13 +75,17 @@ export default function ProcessPage({ params }: ProcessPageProps) {
       const startProcessing = async () => {
         try {
           setProcessingStarted(true);
+          const jwt = await getJwt();
+          if (!jwt) {
+            throw new Error('No JWT available');
+          }
           // Send filters if available, otherwise use defaults
           await processService.startProcessing(job_id, {
             filters: filters || undefined,
             normalize: true,
             remove_duplicates: true,
             remove_outliers: false,
-          });
+          }, jwt);
         } catch (err) {
           console.error('Failed to start processing:', err);
           setProcessingStarted(false);
@@ -87,7 +93,7 @@ export default function ProcessPage({ params }: ProcessPageProps) {
       };
       startProcessing();
     }
-  }, [job_id, job, filters, processingStarted]);
+  }, [job_id, job, filters, processingStarted, getJwt]);
 
   // Progress is already normalized to 0-100 by statusService
   const progress = job?.progress !== undefined ? job.progress : 0;

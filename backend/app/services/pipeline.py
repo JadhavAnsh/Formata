@@ -94,10 +94,10 @@ class ProcessingPipeline:
                     df = pd.DataFrame([json_data])
             elif ext == ".md":
                 content = parse_markdown(file_path)
-                result["status"] = "completed"
-                result["rows_before"] = len(content.split('\n'))
-                result["rows_after"] = result["rows_before"]
-                return result
+                lines = [line.strip() for line in content.split('\n') if line.strip()]
+                if not lines:
+                    lines = [content] if content else []
+                df = pd.DataFrame({"content": lines})
             else:
                 raise ValueError(f"Unsupported file type: {ext}")
             
@@ -363,16 +363,6 @@ class ProcessingPipeline:
             
             result["output_path"] = output_path
             
-            # Save error report
-            if result["errors"]:
-                error_path = os.path.join(self.error_dir, f"{job_id}_errors.txt")
-                with open(error_path, 'w') as f:
-                    f.write(f"Processing Errors for Job {job_id}\n")
-                    f.write("=" * 50 + "\n\n")
-                    for error in result["errors"]:
-                        f.write(f"- {error}\n")
-                result["reports"]["error_report"] = error_path
-            
             logger.info(f"Outputs saved. Path: {output_path}")
             await asyncio.sleep(0)
             
@@ -398,6 +388,37 @@ class ProcessingPipeline:
                 "error_count": len(result["errors"]),
                 "quality_score": result["metadata"].get("quality_score", {})
             }
+
+            # Save processing report (includes summary + errors/warnings)
+            error_path = os.path.join(self.error_dir, f"{job_id}_errors.txt")
+            quality_score = result["summary"].get("quality_score", {})
+            with open(error_path, 'w') as f:
+                f.write(f"Processing Report for Job {job_id}\n")
+                f.write("=" * 60 + "\n\n")
+                f.write("Summary\n")
+                f.write("-" * 60 + "\n")
+                f.write(f"Rows initial: {result['summary']['rows_initial']}\n")
+                f.write(f"Rows after processing: {result['summary']['rows_after']}\n")
+                f.write(f"Rows filtered: {result['summary']['rows_filtered']}\n")
+                f.write(f"Duplicates removed: {result['summary']['duplicates_removed']}\n")
+                f.write(f"Outliers removed: {result['summary']['outliers_removed']}\n")
+                f.write(f"Output format: {result['summary']['output_format']}\n")
+                f.write(f"Processing time (s): {result['summary']['processing_time_seconds']}\n")
+                if quality_score:
+                    f.write(
+                        f"Quality score: {quality_score.get('overall_score', 'N/A')} "
+                        f"(Grade: {quality_score.get('grade', 'N/A')})\n"
+                    )
+
+                f.write("\nIssues\n")
+                f.write("-" * 60 + "\n")
+                if result["errors"]:
+                    for error in result["errors"]:
+                        f.write(f"- {error}\n")
+                else:
+                    f.write("No processing errors found.\n")
+
+            result["reports"]["error_report"] = error_path
             
             result["status"] = "completed"
             result["metadata"]["processing_time"] = processing_time

@@ -34,7 +34,7 @@ export async function apiRequest<T>(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       throw {
-        message: errorData.message || `HTTP error! status: ${response.status}`,
+        message: errorData.detail || errorData.message || `HTTP error! status: ${response.status}`,
         status: response.status,
         data: errorData,
       } as ApiError;
@@ -101,7 +101,7 @@ export async function apiUpload(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       throw {
-        message: errorData.message || `HTTP error! status: ${response.status}`,
+        message: errorData.detail || errorData.message || `HTTP error! status: ${response.status}`,
         status: response.status,
         data: errorData,
       } as ApiError;

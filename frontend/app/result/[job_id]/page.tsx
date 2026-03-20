@@ -3,17 +3,17 @@
 import { useEffect, useState } from 'react';
 
 import { ErrorTable } from '@/components/ErrorTable';
+import { PreviewTable } from '@/components/PreviewTable';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useAuth } from '@/context/AuthContext';
 import { useResult } from '@/hooks/useResult';
 import { resultService } from '@/services/result.service';
 import { vectorService } from '@/services/vector.service';
-import { useAuth } from '@/context/AuthContext';
-import { PreviewTable } from '@/components/PreviewTable';
-import { Download, FileText, RotateCcw, Brain, CheckCircle2, Loader2, Table as TableIcon } from 'lucide-react';
+import { Brain, CheckCircle2, Download, FileText, Loader2, RotateCcw, Table as TableIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface ResultPageProps {
   params: Promise<{
@@ -64,7 +64,7 @@ export default function ResultPage({ params }: ResultPageProps) {
       const response = await vectorService.generateVectors(job_id, {
         method: vectorMethod,
         provider: vectorProvider
-      }, jwt);
+      }, jwt ?? undefined);
       
       setVectorInfo(response);
     } catch (err: any) {
@@ -143,7 +143,7 @@ export default function ResultPage({ params }: ResultPageProps) {
                       if (!job_id) return;
                       try {
                         const jwt = await getJwt();
-                        await resultService.downloadResult(job_id, jwt);
+                        await resultService.downloadResult(job_id, jwt ?? undefined);
                       } catch (err) {
                         console.error('Download failed:', err);
                       }
@@ -171,7 +171,7 @@ export default function ResultPage({ params }: ResultPageProps) {
               <CardContent className="p-6">
                 <h3 className="text-lg font-medium mb-4 flex items-center gap-2">
                   <Brain className="size-5 text-primary" />
-                  Advanced Vectorization (Phase 5)
+                  Advanced Vectorization
                 </h3>
                 
                 {vectorInfo ? (
@@ -195,7 +195,7 @@ export default function ResultPage({ params }: ResultPageProps) {
                           if (!job_id) return;
                           try {
                             const jwt = await getJwt();
-                            await resultService.downloadVectorPkl(job_id, jwt);
+                            await resultService.downloadVectorPkl(job_id, jwt ?? undefined);
                           } catch (err) {
                             console.error('Download failed:', err);
                           }
@@ -210,7 +210,7 @@ export default function ResultPage({ params }: ResultPageProps) {
                           if (!job_id) return;
                           try {
                             const jwt = await getJwt();
-                            await resultService.downloadVectorH5(job_id, jwt);
+                            await resultService.downloadVectorH5(job_id, jwt ?? undefined);
                           } catch (err) {
                             console.error('Download failed:', err);
                           }

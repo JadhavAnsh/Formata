@@ -21,6 +21,20 @@ export interface ProfileReport {
  * Service for fetching processing results
  */
 export const resultService = {
+  async _extractErrorMessage(response: Response, fallback: string): Promise<string> {
+    try {
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await response.json();
+        return data?.detail || data?.message || fallback;
+      }
+      const text = await response.text();
+      return text || fallback;
+    } catch {
+      return fallback;
+    }
+  },
+
   /**
    * Get the profile report HTML content for a job
    */
@@ -57,7 +71,8 @@ export const resultService = {
     });
     
     if (!response.ok) {
-      throw new Error(`Failed to download: ${response.statusText}`);
+      const message = await this._extractErrorMessage(response, response.statusText);
+      throw new Error(`Failed to download: ${message}`);
     }
     
     // Get filename from Content-Disposition header if available
@@ -96,7 +111,8 @@ export const resultService = {
     });
     
     if (!response.ok) {
-      throw new Error(`Failed to download vector file: ${response.statusText}`);
+      const message = await this._extractErrorMessage(response, response.statusText);
+      throw new Error(`Failed to download vector file: ${message}`);
     }
     
     // Get filename from Content-Disposition header if available
@@ -132,7 +148,8 @@ export const resultService = {
     });
     
     if (!response.ok) {
-      throw new Error(`Failed to download vector file: ${response.statusText}`);
+      const message = await this._extractErrorMessage(response, response.statusText);
+      throw new Error(`Failed to download vector file: ${message}`);
     }
     
     // Get filename from Content-Disposition header if available
@@ -169,7 +186,23 @@ export const resultService = {
       const resultData = job.result || job.metadata?.result;
       
       if (!resultData) {
-        throw new Error('Result data not available yet. Job may still be processing.');
+        const fallbackErrors: ValidationError[] = job.error
+          ? [{
+              row: 0,
+              column: '',
+              message: String(job.error),
+              code: 'JOB_ERROR',
+              severity: 'error',
+            }]
+          : [];
+
+        return {
+          jobId: job.job_id || job.id || jobId,
+          beforeData: undefined,
+          afterData: undefined,
+          errors: fallbackErrors,
+          metadata: job.metadata || {},
+        };
       }
       
       // Normalize the result data to match ProcessingResult interface

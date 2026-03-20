@@ -14,17 +14,13 @@ from app.guards.appwrite_auth import verify_appwrite_session
 from app.services.appwrite_storage import appwrite_storage
 from app.config.settings import settings
 from app.utils.logger import logger
-from app.utils.file_utils import ensure_directory
 from app.utils.job_utils import get_job_with_fallback
-from app.services.conversion import csv_to_json
+from app.services.pipeline import ProcessingPipeline
 from app.services.vectorization import (
     dataframe_to_vectors,
     save_vectors_pickle,
     save_vectors_hdf5
 )
-from app.config.settings import settings
-
-from app.services.appwrite_storage import appwrite_storage
 from app.services.appwrite_db import appwrite_db
 import json
 
@@ -35,6 +31,127 @@ class VectorRequest(BaseModel):
     """Request model for vector generation"""
     method: str = "hybrid"  # hybrid, text_only, numeric
     provider: str = "local" # local, gemini
+
+
+def _resolve_output_format(job) -> str:
+    output_format = (job.metadata or {}).get("output_format")
+    if output_format in {"csv", "json"}:
+        return output_format
+
+    if job.result and job.result.get("output_path"):
+        ext = job.result["output_path"].split(".")[-1].lower()
+        if ext in {"csv", "json"}:
+            return ext
+
+    metadata_output = (job.metadata or {}).get("output_path")
+    if isinstance(metadata_output, str) and "." in metadata_output:
+        ext = metadata_output.split(".")[-1].lower()
+        if ext in {"csv", "json"}:
+            return ext
+
+    return "csv"
+
+
+async def _resolve_or_download_output_path(job_id: str, job) -> Optional[str]:
+    output_path = None
+    if job.result and job.result.get("output_path"):
+        output_path = job.result["output_path"]
+    elif (job.metadata or {}).get("output_path"):
+        output_path = job.metadata["output_path"]
+    else:
+        output_format = _resolve_output_format(job)
+        output_path = os.path.join(settings.output_dir, f"resolved_{job_id}.{output_format}")
+
+    if output_path and os.path.exists(output_path):
+        return output_path
+
+    result_file_id = (job.metadata or {}).get("result_file_id") or (job.result.get("appwrite_result_file_id") if job.result else None)
+    if not result_file_id:
+        recovered_output_path, recovered_file_id = await _recover_output_for_job(job_id, job)
+        if recovered_output_path and os.path.exists(recovered_output_path):
+            return recovered_output_path
+        if recovered_file_id:
+            result_file_id = recovered_file_id
+            output_path = os.path.join(settings.output_dir, f"resolved_{job_id}.{_resolve_output_format(job)}")
+        else:
+            return None
+
+    logger.info(f"Local output file missing, downloading {result_file_id} from Appwrite Storage")
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    appwrite_storage.download_file(result_file_id, output_path)
+
+    return output_path if os.path.exists(output_path) else None
+
+
+def _default_process_config(output_format: str) -> dict:
+    return {
+        "normalize": True,
+        "remove_duplicates": True,
+        "remove_outliers": False,
+        "filters": None,
+        "validation_rules": None,
+        "output_format": output_format,
+        "detect_data_quality_issues": True,
+        "enforce_types": True,
+        "auto_detect_types": True,
+        "handle_missing_data": True,
+        "default_missing_strategy": "fill_mean",
+        "flag_missing_data": False,
+    }
+
+
+async def _recover_output_for_job(job_id: str, job) -> tuple[Optional[str], Optional[str]]:
+    if not job.file_path or not job.file_path.startswith("appwrite://"):
+        return None, None
+
+    try:
+        file_id = job.file_path.replace("appwrite://", "")
+        source_ext = os.path.splitext(job.file_name or "")[1]
+        local_input_path = os.path.join(settings.upload_dir, f"recover_input_{job_id}{source_ext}")
+        os.makedirs(settings.upload_dir, exist_ok=True)
+        appwrite_storage.download_file(file_id, local_input_path)
+
+        output_format = _resolve_output_format(job)
+        process_config = (job.metadata or {}).get("process_config") or _default_process_config(output_format)
+        process_config["output_format"] = process_config.get("output_format", output_format)
+
+        pipeline = ProcessingPipeline()
+        recovered_result = await pipeline.run_async(
+            job_id=job_id,
+            file_path=local_input_path,
+            config=process_config
+        )
+
+        output_path = recovered_result.get("output_path")
+        if not output_path or not os.path.exists(output_path):
+            return None, None
+
+        result_file_id = appwrite_storage.upload_file(output_path)
+        job_store.set_job_metadata(job_id, {
+            "output_path": output_path,
+            "output_format": process_config.get("output_format", output_format),
+            "result_file_id": result_file_id
+        })
+        job_store.set_job_result(job_id, {
+            "job_id": job_id,
+            "status": "completed",
+            "output_path": output_path,
+            "summary": recovered_result.get("summary", {}),
+            "errors": recovered_result.get("errors", []),
+            "reports": recovered_result.get("reports", {}),
+            "metadata": recovered_result.get("metadata", {}),
+            "appwrite_result_file_id": result_file_id
+        })
+
+        try:
+            os.remove(local_input_path)
+        except Exception:
+            pass
+
+        return output_path, result_file_id
+    except Exception as e:
+        logger.error(f"Failed to recover output for vectors job {job_id}: {str(e)}")
+        return None, None
 
 
 @router.post("/{job_id}/generate")
@@ -76,26 +193,12 @@ async def generate_vectors(
                 detail=f"Job is in {job.status.value} state. Only completed jobs can be vectorized."
             )
         
-        if not job.result or not job.result.get("output_path"):
+        output_path = await _resolve_or_download_output_path(job_id, job)
+        if not output_path:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Output file not found in job result"
+                detail="Output file not found on disk or cloud. Cannot generate vectors."
             )
-        
-        output_path = job.result["output_path"]
-        if not os.path.exists(output_path):
-            # Try to download result file from Appwrite first if local is missing
-            result_file_id = job.metadata.get("result_file_id") or job.result.get("appwrite_result_file_id")
-            if result_file_id:
-                logger.info(f"Local output file missing, downloading {result_file_id} from Appwrite Storage for vectorization")
-                # Ensure directory exists
-                os.makedirs(os.path.dirname(output_path), exist_ok=True)
-                appwrite_storage.download_file(result_file_id, output_path)
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Output file not found on disk or cloud. Cannot generate vectors."
-                )
         
         logger.info(f"Generating vectors for job {job_id} using method: {request.method}, provider: {request.provider}")
         
@@ -250,24 +353,12 @@ async def download_vectors(
             )
 
         # Priority 2: On-the-fly generation fallback
-        if not job.result or not job.result.get("output_path"):
+        output_path = await _resolve_or_download_output_path(job_id, job)
+        if not output_path:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Output file not found in job result"
+                detail="Output file not found on disk or cloud"
             )
-        
-        output_path = job.result["output_path"]
-        if not os.path.exists(output_path):
-            # Try to download result file from Appwrite first if local is missing
-            result_file_id = job.metadata.get("result_file_id")
-            if result_file_id:
-                logger.info(f"Local output file missing, downloading {result_file_id} from Appwrite Storage")
-                appwrite_storage.download_file(result_file_id, output_path)
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Output file not found on disk or cloud"
-                )
         
         logger.info(f"Generating vectors on-the-fly for job {job_id} in {format} format")
         
@@ -361,17 +452,11 @@ async def get_vector_info(
                 detail=f"Job is in {job.status.value} state"
             )
         
-        if not job.result or not job.result.get("output_path"):
+        output_path = await _resolve_or_download_output_path(job_id, job)
+        if not output_path:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Output file not found"
-            )
-        
-        output_path = job.result["output_path"]
-        if not os.path.exists(output_path):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Output file not found on disk"
+                detail="Output file not found on disk or cloud"
             )
         
         logger.info(f"Retrieving vector info for job {job_id}")
