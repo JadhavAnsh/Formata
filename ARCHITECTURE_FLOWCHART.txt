@@ -8,29 +8,26 @@ Paste any block below into a Mermaid editor.
 Diagram A: Compact System Architecture
 
 flowchart LR
-  U[User]
-
-  subgraph FE[Frontend\nNext.js]
-    UI[UI Pages + Components]
-    FAPI[Service Layer]
+ subgraph FE["Frontend\nNext.js"]
+        UI["UI Pages + Components"]
+        FAPI["Service Layer"]
+  end
+ subgraph BE["Backend\nFastAPI"]
+        API["REST API + Auth"]
+        JOB["Job Queue + Worker"]
+        PIPE["Data Pipeline\nparse, clean, normalize, validate"]
+  end
     UI --> FAPI
-  end
+    API --> JOB & DB[("File Storage\nuploads, outputs, errors")]
+    JOB --> PIPE
+    U["User"] --> FE
+    FAPI --> API
+    PIPE --> DB
 
-  subgraph BE[Backend\nFastAPI]
-    API[REST API + Auth]
-    JOB[Job Queue + Worker]
-    PIPE[Data Pipeline\nparse, clean, normalize, validate]
-    API --> JOB --> PIPE
-  end
-
-  DB[(File Storage\nuploads, outputs, errors)]
-  EXT[(OpenAI Embeddings\noptional)]
-
-  U --> FE
-  FAPI --> API
-  PIPE --> DB
-  API --> DB
-  API -. optional .-> EXT
+    style DB fill:#BBDEFB
+    style U fill:#BBDEFB
+    style FE fill:#FFE0B2
+    style BE fill:#C8E6C9
 
 ------------------------------------------------------------
 
