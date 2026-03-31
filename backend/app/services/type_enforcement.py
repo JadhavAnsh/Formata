@@ -62,12 +62,13 @@ def detect_column_types(df: pd.DataFrame, confidence_threshold: float = 0.8) -> 
             detected_types[col] = 'bool'
             continue
         
-        # Check for integer
+        # Check for integer/float only when all non-null values are numeric.
+        # This avoids classifying mixed columns like ['1', '2', 'three'] as numeric.
         try:
             numeric = pd.to_numeric(series, errors='coerce')
             valid_numeric = numeric.notna().sum()
             
-            if valid_numeric / total_count >= confidence_threshold:
+            if valid_numeric == total_count:
                 # Check if all numeric values are integers
                 is_integer = (numeric.dropna() == numeric.dropna().astype(int)).all()
                 if is_integer:

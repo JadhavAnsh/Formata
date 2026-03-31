@@ -1,6 +1,9 @@
 # Enhanced filtering with multi-filter support, statistical filters, and text analysis
 import pandas as pd
-from typing import Dict, Any, Optional
+import numpy as np
+from typing import Dict, Any, List, Optional, Tuple
+from datetime import datetime
+import re
 
 
 def _resolve_column(df: pd.DataFrame, key: str) -> str | None:
@@ -24,14 +27,13 @@ def _detect_column_type(series: pd.Series) -> str:
     if pd.api.types.is_bool_dtype(series):
         return "boolean"
 
-    if pd.api.types.is_datetime64_any_dtype(series):
-        return "datetime"
-
     if pd.api.types.is_numeric_dtype(series):
         return "numeric"
     
     # Count non-null values
     non_null_count = series.notna().sum()
+    total_count = len(series)
+    
     if non_null_count == 0:
         return "text"  # Default to text if all null
     
@@ -87,7 +89,7 @@ def _try_parse_datetime(series: pd.Series) -> Optional[pd.Series]:
     
     # Fallback to pandas inference
     try:
-        return pd.to_datetime(series, errors="coerce")
+        return pd.to_datetime(series, errors="coerce", infer_datetime_format=True)
     except Exception:
         return None
 
@@ -98,6 +100,7 @@ def _analyze_text_content(series: pd.Series, non_null_count: int) -> Dict[str, A
         'is_text_dominant': False,
         'avg_length': 0,
         'unique_ratio': 0,
+        'contains_special_chars': 0,
     }
     
     try:
@@ -196,6 +199,7 @@ def _apply_numeric_range(df: pd.DataFrame, min_v: Any, max_v: Any) -> pd.DataFra
 def _apply_statistical_filter(
     series: pd.Series,
     operator: str,
+    value: Optional[float] = None,
     std_dev_multiplier: float = 1.0
 ) -> pd.Series:
     """
@@ -245,12 +249,6 @@ def _apply_statistical_filter(
             lower = Q1 - (1.5 * IQR)
             upper = Q3 + (1.5 * IQR)
             return (numeric_series >= lower) & (numeric_series <= upper)
-
-        elif operator == "mode":
-            modes = numeric_series.dropna().mode()
-            if modes.empty:
-                return pd.Series(True, index=series.index)
-            return numeric_series == modes.iloc[0]
         
         else:
             return pd.Series(True, index=series.index)
@@ -307,8 +305,8 @@ def _apply_single_filter(
                     filtered_df = filtered_df[(s >= min_v) & (s <= max_v)]
             
             # Statistical filters
-            elif op in {"gt_mean", "lt_mean", "gt_median", "lt_median", "mode",
-                        "within_std", "outliers", "iqr"}:
+            elif op in {"gt_mean", "lt_mean", "gt_median", "lt_median", 
+                       "within_std", "outliers", "iqr"}:
                 std_mult = rule.get("std_multiplier", 1.0)
                 mask = _apply_statistical_filter(s, op, std_dev_multiplier=std_mult)
                 filtered_df = filtered_df[mask]
@@ -368,11 +366,6 @@ def _apply_single_filter(
                 filtered_df = filtered_df[
                     s.str.contains(pattern, case=False, na=False, regex=True)
                 ]
-
-            elif op == "mode":
-                modes = s.dropna().mode()
-                if not modes.empty:
-                    filtered_df = filtered_df[s == modes.iloc[0]]
     
     except Exception as e:
         # Log but don't fail - try to continue with other filters

@@ -80,7 +80,15 @@ export const resultService = {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(downloadUrl);
+      // Small delay to ensure browser processes the download before cleanup
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(downloadUrl);
+        } catch (e) {
+          // Silently catch cleanup errors
+          console.debug('URL cleanup error:', e);
+        }
+      }, 100);
   },
 
   /**
@@ -120,7 +128,15 @@ export const resultService = {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(downloadUrl);
+      // Small delay to ensure browser processes the download before cleanup
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(downloadUrl);
+        } catch (e) {
+          // Silently catch cleanup errors
+          console.debug('URL cleanup error:', e);
+        }
+      }, 100);
   },
 
     async downloadVectorH5(jobId: string): Promise<void> {
@@ -157,7 +173,15 @@ export const resultService = {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(downloadUrl);
+      // Small delay to ensure browser processes the download before cleanup
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(downloadUrl);
+        } catch (e) {
+          // Silently catch cleanup errors
+          console.debug('URL cleanup error:', e);
+        }
+      }, 100);
   },
 
   /**

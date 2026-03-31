@@ -1,6 +1,6 @@
 'use client';
 
-import { fileCache } from '@/app/ingest/page';
+import { fileCache, parsedPreviewCache } from '@/app/ingest/page';
 import { FilterForm } from '@/components/FilterForm';
 import { PreviewTable } from '@/components/PreviewTable';
 import { Button } from '@/components/ui/button';
@@ -32,6 +32,25 @@ export default function PreviewPage({ params }: PreviewPageProps) {
   const [appliedFilters, setAppliedFilters] = useState<FilterParams>({});
   const [originalData, setOriginalData] = useState<Array<Record<string, any>>>([]);
 
+  const toError = (err: unknown, fallback: string) => {
+    if (err instanceof Error) return err;
+
+    if (err && typeof err === 'object') {
+      const maybeMessage = (err as { message?: unknown }).message;
+      const maybeDetail = (err as { detail?: unknown }).detail;
+
+      if (typeof maybeMessage === 'string' && maybeMessage.trim()) {
+        return new Error(maybeMessage);
+      }
+
+      if (typeof maybeDetail === 'string' && maybeDetail.trim()) {
+        return new Error(maybeDetail);
+      }
+    }
+
+    return new Error(fallback);
+  };
+
   useEffect(() => {
     params.then((p) => setjob_id(p.job_id));
   }, [params]);
@@ -44,26 +63,40 @@ export default function PreviewPage({ params }: PreviewPageProps) {
       setError(null);
       
       try {
-        // Load parsed data from sessionStorage (stored after upload)
-        const storedData = sessionStorage.getItem(`preview_data_${job_id}`);
-        if (!storedData) {
-          throw new Error('Preview data not found. Please upload the file again.');
+        // Large parsed payload is kept in memory to avoid storage quota errors
+        const parsedData = parsedPreviewCache.get(job_id);
+
+        if (!parsedData) {
+          // Keep backward compatibility for sessions created before this fix
+          const storedData = sessionStorage.getItem(`preview_data_${job_id}`);
+          if (!storedData) {
+            throw new Error('Preview data expired. Please upload the file again.');
+          }
+
+          const legacyData = JSON.parse(storedData) as { parsedData?: any };
+          if (!legacyData.parsedData) {
+            throw new Error('Preview data expired. Please upload the file again.');
+          }
+
+          parsedPreviewCache.set(job_id, legacyData.parsedData);
+        }
+
+        const resolvedParsedData = parsedPreviewCache.get(job_id);
+        if (!resolvedParsedData) {
+          throw new Error('Preview data expired. Please upload the file again.');
         }
         
-        const fileData = JSON.parse(storedData);
-        const parsedData = fileData.parsedData;
-        
-        setData(parsedData.records || []);
-        setOriginalData(parsedData.records || []);
-        setRowCount(parsedData.records?.length || 0);
-        setTotalRows(parsedData.totalRows);
-        setColumns(parsedData.columns || []);
+        setData(resolvedParsedData.records || []);
+        setOriginalData(resolvedParsedData.records || []);
+        setRowCount(resolvedParsedData.records?.length || 0);
+        setTotalRows(resolvedParsedData.totalRows);
+        setColumns(resolvedParsedData.columns || []);
         
         // Detect column types
-        if (parsedData.records && parsedData.records.length > 0) {
+        if (resolvedParsedData.records && resolvedParsedData.records.length > 0) {
           const detectedTypes: Record<string, 'text' | 'numeric' | 'datetime' | 'boolean'> = {};
-          parsedData.columns.forEach((col: string) => {
-            const sampleValue = parsedData.records[0][col];
+          resolvedParsedData.columns.forEach((col: string) => {
+            const sampleValue = resolvedParsedData.records[0][col];
             if (sampleValue === null || sampleValue === undefined) {
               detectedTypes[col] = 'text';
             } else if (typeof sampleValue === 'boolean') {
@@ -84,7 +117,7 @@ export default function PreviewPage({ params }: PreviewPageProps) {
           setColumnTypes(detectedTypes);
         }
       } catch (err) {
-        setError(err instanceof Error ? err : new Error('Failed to load preview data'));
+        setError(toError(err, 'Failed to load preview data'));
       } finally {
         setIsLoading(false);
       }
@@ -107,7 +140,7 @@ export default function PreviewPage({ params }: PreviewPageProps) {
       setRowCount(filtered.length);
       setAppliedFilters(filters as FilterParams);
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to apply filters'));
+      setError(toError(err, 'Failed to apply filters'));
     } finally {
       setIsFiltering(false);
     }
@@ -125,7 +158,7 @@ export default function PreviewPage({ params }: PreviewPageProps) {
       setRowCount(originalData.length);
       setAppliedFilters({});
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('Failed to clear filters'));
+      setError(toError(err, 'Failed to clear filters'));
     } finally {
       setIsFiltering(false);
     }
@@ -171,8 +204,10 @@ export default function PreviewPage({ params }: PreviewPageProps) {
       // Navigate to process page
       router.push(`/process/${actualJobId}`);
     } catch (err) {
-      console.error('Failed to continue to process:', err);
-      setError(err instanceof Error ? err : new Error('Failed to start processing'));
+      const resolvedError = toError(err, 'Failed to start processing');
+      console.error('Failed to continue to process:', resolvedError);
+      setError(resolvedError);
+    } finally {
       setIsProcessing(false);
     }
   };

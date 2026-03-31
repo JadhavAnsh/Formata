@@ -7,6 +7,8 @@ import { useState } from 'react';
 
 // Store files in memory using a Map
 export const fileCache = new Map<string, File>();
+// Store parsed preview payload in memory to avoid browser storage quota limits
+export const parsedPreviewCache = new Map<string, Awaited<ReturnType<typeof parseFile>>>();
 
 export default function IngestPage() {
   const router = useRouter();
@@ -26,18 +28,18 @@ export default function IngestPage() {
       
       // Store file in memory cache instead of sessionStorage
       fileCache.set(previewId, file);
+      parsedPreviewCache.set(previewId, parsedData);
       
-      // Store metadata and parsed data in sessionStorage for preview page
+      // Store only light metadata in sessionStorage for resiliency on navigation
       const fileData = {
         previewId,
         fileName: file.name,
         fileType: file.name.split('.').pop()?.toLowerCase(),
         fileSize: file.size,
-        parsedData,
         uploadedAt: new Date().toISOString(),
       };
       
-      // Store only metadata in sessionStorage (not the file itself)
+      // Keep payload minimal to avoid QuotaExceededError in browsers
       sessionStorage.setItem(`preview_data_${previewId}`, JSON.stringify(fileData));
       
       // Navigate to preview with preview_id in params

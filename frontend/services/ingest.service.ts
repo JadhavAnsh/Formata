@@ -12,7 +12,7 @@ export const ingestService = {
     filters?: Record<string, any>;
     normalization?: Record<string, any>;
   }): Promise<Job> {
-    return apiUpload('/ingest', file);
+    return apiUpload('/ingest', file, options);
   },
 };
 

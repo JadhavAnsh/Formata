@@ -1,0 +1,92 @@
+Formata Compact Architecture (Mermaid)
+
+Use this file for research paper and poster diagrams.
+Paste any block below into a Mermaid editor.
+
+------------------------------------------------------------
+
+Diagram A: Compact System Architecture
+
+flowchart LR
+  U[User]
+
+  subgraph FE[Frontend\nNext.js]
+    UI[UI Pages + Components]
+    FAPI[Service Layer]
+    UI --> FAPI
+  end
+
+  subgraph BE[Backend\nFastAPI]
+    API[REST API + Auth]
+    JOB[Job Queue + Worker]
+    PIPE[Data Pipeline\nparse, clean, normalize, validate]
+    API --> JOB --> PIPE
+  end
+
+  DB[(File Storage\nuploads, outputs, errors)]
+  EXT[(OpenAI Embeddings\noptional)]
+
+  U --> FE
+  FAPI --> API
+  PIPE --> DB
+  API --> DB
+  API -. optional .-> EXT
+
+------------------------------------------------------------
+
+Diagram B: Compact Processing Flow
+
+flowchart LR
+  A[Upload Data] --> B[Ingest]
+  B --> C[Process Job]
+  C --> D[Track Status]
+  D --> E[Get Result]
+  C --> F[Error Report]
+
+------------------------------------------------------------
+
+Diagram C: Filtering Methods and File Conversion
+
+flowchart LR
+  IN[Input File]
+  TYPE{File Type}
+
+  CSV[CSV]
+  JSON[JSON]
+  XLSX[Excel]
+  MD[Markdown Table]
+
+  PREP[Unified Table Representation]
+  FILT[Filtering Layer]
+
+  F1[Equality Filter\ncolumn = value]
+  F2[Contains Filter\ntext contains]
+  F3[Range Filter\nmin <= value <= max]
+  F4[Rule Combination\nAND / OR]
+
+  CLEAN[Cleaned Dataset]
+  CONV{Output Format}
+  OCSV[CSV Output]
+  OJSON[JSON Output]
+
+  IN --> TYPE
+  TYPE --> CSV --> PREP
+  TYPE --> JSON --> PREP
+  TYPE --> XLSX --> PREP
+  TYPE --> MD --> PREP
+
+  PREP --> FILT
+  FILT --> F1
+  FILT --> F2
+  FILT --> F3
+  FILT --> F4
+
+  F1 --> CLEAN
+  F2 --> CLEAN
+  F3 --> CLEAN
+  F4 --> CLEAN
+
+  CLEAN --> CONV
+  CONV --> OCSV
+  CONV --> OJSON
+

@@ -14,6 +14,7 @@ from app.services.filtering import apply_filters
 from app.services.noise import remove_duplicates, remove_outliers
 from app.services.validation import validate_schema, get_validation_errors
 from app.utils.logger import logger
+from app.services.time_tracker import get_tracker, cleanup_tracker
 
 
 class ProcessingPipeline:
@@ -58,6 +59,7 @@ class ProcessingPipeline:
         Enhanced 11-step flow with profiling and AI analysis
         """
         start_time = time.time()
+        timer = get_tracker(job_id)  # Initialize time tracker
         
         result = {
             "job_id": job_id,
@@ -163,7 +165,7 @@ class ProcessingPipeline:
                     
                     # Handle missing data
                     strategy = config.get("missing_data_strategy")
-                    default_strategy = config.get("default_missing_strategy", "fill_mean")
+                    default_strategy = config.get("default_missing_strategy", "fill_smart")
                     flag_missing = config.get("flag_missing_data", False)
                     
                     # If flagging is requested, add 'flag' to the strategy
@@ -386,6 +388,12 @@ class ProcessingPipeline:
             result["status"] = "completed"
             result["metadata"]["processing_time"] = processing_time
             
+            # Add detailed timing information
+            timing_summary = timer.get_summary()
+            result["metadata"]["timing_details"] = timing_summary
+            timer.log_summary()
+            cleanup_tracker(job_id)
+            
             if progress_callback:
                 progress_callback(1.0)
             
@@ -406,4 +414,5 @@ class ProcessingPipeline:
                 f.write(f"Rows after: {result['rows_after']}\n")
         
         return result
+
 

@@ -5,7 +5,103 @@ from typing import Dict, Any, List, Optional, Literal
 from app.utils.logger import logger
 
 
-MissingDataStrategy = Literal['fill_mean', 'fill_median', 'fill_mode', 'fill_forward', 'fill_backward', 'fill_value', 'drop_rows', 'drop_columns', 'flag']
+MissingDataStrategy = Literal['fill_mean', 'fill_median', 'fill_mode', 'fill_smart', 'fill_forward', 'fill_backward', 'fill_value', 'drop_rows', 'drop_columns', 'flag']
+
+
+def smart_impute_column(
+    df: pd.DataFrame,
+    column_name: str,
+    skew_threshold: float = 0.5
+) -> tuple[pd.DataFrame, Dict[str, Any]]:
+    """
+    Smart imputation for a single column using distribution-aware rules.
+
+    Decision logic:
+    - Numeric + low skew (|skewness| < threshold): fill with mean.
+    - Numeric + high skew (|skewness| >= threshold): fill with median.
+    - Non-numeric: fill with mode.
+
+    This function is intentionally verbose and commented for learning purposes.
+    """
+    # Create a copy so the original input DataFrame is never mutated in place.
+    result_df = df.copy()
+
+    # Standard response payload with enough metadata for debugging and UI reporting.
+    report: Dict[str, Any] = {
+        "column": column_name,
+        "status": "skipped",
+        "method": None,
+        "fill_value": None,
+        "skewness": None,
+        "missing_before": 0,
+        "missing_after": 0,
+        "error": None,
+    }
+
+    try:
+        # Guard 1: Make sure the requested column exists.
+        if column_name not in result_df.columns:
+            raise KeyError(f"Column '{column_name}' does not exist")
+
+        # Work with a typed series reference for readability.
+        series = result_df[column_name]
+
+        # Count missing values before we do any filling.
+        missing_before = int(series.isna().sum())
+        report["missing_before"] = missing_before
+
+        # If nothing is missing, there is nothing to impute.
+        if missing_before == 0:
+            report["status"] = "no_missing_values"
+            return result_df, report
+
+        # Non-null values are the basis for all statistics.
+        non_null = series.dropna()
+
+        # Guard 2: A fully empty column cannot produce mean/median/mode.
+        if non_null.empty:
+            raise ValueError(f"Column '{column_name}' is entirely empty")
+
+        # Branch A: Numeric columns use skewness-aware mean vs median.
+        if pd.api.types.is_numeric_dtype(series):
+            # Compute skewness and normalize possible NaN values for edge cases.
+            skewness = float(non_null.skew())
+            if not np.isfinite(skewness):
+                skewness = 0.0
+            report["skewness"] = skewness
+
+            # Choose method based on skew magnitude.
+            if abs(skewness) < skew_threshold:
+                method = "mean"
+                fill_value = float(non_null.mean())
+            else:
+                method = "median"
+                fill_value = float(non_null.median())
+
+        # Branch B: Non-numeric columns use mode (most frequent value).
+        else:
+            method = "mode"
+            modes = non_null.mode(dropna=True)
+            if modes.empty:
+                raise ValueError(f"Column '{column_name}' has no valid mode value")
+            fill_value = modes.iloc[0]
+
+        # Apply the imputation value to all missing entries.
+        result_df[column_name] = series.fillna(fill_value)
+
+        # Capture final stats for traceability.
+        report["status"] = "imputed"
+        report["method"] = method
+        report["fill_value"] = fill_value
+        report["missing_after"] = int(result_df[column_name].isna().sum())
+
+    except Exception as exc:
+        # Convert any failure into a structured report instead of crashing callers.
+        report["status"] = "error"
+        report["error"] = str(exc)
+        report["missing_after"] = report["missing_before"]
+
+    return result_df, report
 
 
 def analyze_missing_data(df: pd.DataFrame) -> Dict[str, Any]:
@@ -38,7 +134,7 @@ def analyze_missing_data(df: pd.DataFrame) -> Dict[str, Any]:
             col_dtype = str(df[col].dtype)
             
             if 'int' in col_dtype or 'float' in col_dtype:
-                recommended = 'fill_median'
+                recommended = 'fill_smart'
             elif 'bool' in col_dtype:
                 recommended = 'fill_mode'
             elif 'datetime' in col_dtype:
@@ -136,6 +232,15 @@ def handle_missing_data(
                 mode_val = df[col].mode()[0] if not df[col].mode().empty else None
                 df[col] = df[col].fillna(mode_val).infer_objects(copy=False)
                 report["actions"][col] = f"Filled with mode ({mode_val})"
+
+            elif col_strategy == 'fill_smart':
+                df, smart_report = smart_impute_column(df, col)
+                if smart_report.get("status") == "error":
+                    raise ValueError(smart_report.get("error") or "Smart imputation failed")
+                report["actions"][col] = (
+                    f"Smart imputation using {smart_report['method']} "
+                    f"(value={smart_report['fill_value']}, skewness={smart_report['skewness']})"
+                )
             
             elif col_strategy == 'fill_forward':
                 df[col] = df[col].ffill()

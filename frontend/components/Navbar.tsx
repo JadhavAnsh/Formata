@@ -11,7 +11,7 @@ import {
 import { motion } from "framer-motion"
 import { Menu, Moon, Sun } from "lucide-react"
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useSyncExternalStore } from "react"
 
 type Theme = "light" | "dark"
 
@@ -26,6 +26,11 @@ function getInitialTheme(): Theme {
 
 export function Navbar() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme)
+  const isHydrated = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  )
 
   useEffect(() => {
     localStorage.setItem("theme", theme)
@@ -60,7 +65,7 @@ export function Navbar() {
           aria-label="Toggle theme"
           onClick={toggleTheme}
         >
-          {theme === "dark" ? <Sun /> : <Moon />}
+          {!isHydrated ? <Moon /> : theme === "dark" ? <Sun /> : <Moon />}
         </Button>
         <div className="hidden sm:flex items-center gap-3">
           <Link href="/login" className="text-sm text-muted-foreground hover:text-foreground transition-colors">

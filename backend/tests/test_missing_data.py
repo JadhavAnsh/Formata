@@ -4,7 +4,8 @@ import numpy as np
 from app.services.missing_data import (
     analyze_missing_data,
     handle_missing_data,
-    get_missing_data_summary
+    get_missing_data_summary,
+    smart_impute_column,
 )
 
 
@@ -41,8 +42,62 @@ class TestMissingData:
         assert 'numeric_col' in analysis['recommendations']
         assert 'bool_col' in analysis['recommendations']
         assert 'string_col' in analysis['recommendations']
-        # Numeric columns should recommend median
-        assert analysis['recommendations']['numeric_col'] == 'fill_median'
+        # Numeric columns should recommend smart imputation
+        assert analysis['recommendations']['numeric_col'] == 'fill_smart'
+
+    def test_smart_impute_column_numeric_low_skew_uses_mean(self):
+        """Smart imputation should use mean for near-symmetric numeric data"""
+        df = pd.DataFrame({'value': [10.0, 11.0, 12.0, None, 13.0]})
+
+        result_df, report = smart_impute_column(df, 'value')
+
+        assert report['status'] == 'imputed'
+        assert report['method'] == 'mean'
+        assert result_df['value'].isna().sum() == 0
+        assert result_df['value'].iloc[3] == pytest.approx(11.5)
+
+    def test_smart_impute_column_numeric_high_skew_uses_median(self):
+        """Smart imputation should use median for highly skewed numeric data"""
+        df = pd.DataFrame({'value': [1.0, 2.0, 3.0, None, 100.0]})
+
+        result_df, report = smart_impute_column(df, 'value')
+
+        assert report['status'] == 'imputed'
+        assert report['method'] == 'median'
+        assert result_df['value'].isna().sum() == 0
+        assert result_df['value'].iloc[3] == pytest.approx(2.5)
+
+    def test_smart_impute_column_non_numeric_uses_mode(self):
+        """Smart imputation should fall back to mode for non-numeric columns"""
+        df = pd.DataFrame({'category': ['A', 'B', 'A', None]})
+
+        result_df, report = smart_impute_column(df, 'category')
+
+        assert report['status'] == 'imputed'
+        assert report['method'] == 'mode'
+        assert result_df['category'].isna().sum() == 0
+        assert result_df['category'].iloc[3] == 'A'
+
+    def test_smart_impute_column_entirely_empty_reports_error(self):
+        """Smart imputation should report an error for fully empty columns"""
+        df = pd.DataFrame({'value': [None, None, None]})
+
+        result_df, report = smart_impute_column(df, 'value')
+
+        assert report['status'] == 'error'
+        assert 'entirely empty' in report['error']
+        assert result_df['value'].isna().sum() == 3
+
+    def test_handle_missing_data_fill_smart(self):
+        """handle_missing_data should support the fill_smart strategy"""
+        df = pd.DataFrame({'value': [1.0, 2.0, 3.0, None, 100.0]})
+
+        strategy = {'value': 'fill_smart'}
+        result_df, report = handle_missing_data(df, strategy=strategy)
+
+        assert result_df['value'].isna().sum() == 0
+        assert result_df['value'].iloc[3] == pytest.approx(2.5)
+        assert 'Smart imputation using median' in report['actions']['value']
     
     def test_handle_missing_data_fill_mean(self):
         """Test filling missing data with mean"""
