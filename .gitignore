@@ -52,5 +52,11 @@ Thumbs.db
 backend/app/services/data/
 
 
-###misc
-./backend/storage/*
+### Misc
+# Ignore generated processing artifacts
+backend/storage/uploads/**
+backend/storage/outputs/**
+backend/storage/reports/**
+
+# Keep error folder structure available in repo
+!backend/storage/errors/
