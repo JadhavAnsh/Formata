@@ -66,7 +66,7 @@ export default function ResultPage({ params }: ResultPageProps) {
   const dashOffset = circumference - (qualityScore / 100) * circumference;
 
   return (
-    <div className="min-h-screen mt-22 pt-24 sm:pt-28 pb-16 px-4 sm:px-6 relative">
+    <div className="min-h-screen mt-22 pt-24 sm:pt-28 pb-16 px-4 sm:px-6 relative" suppressHydrationWarning>
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_50%_0%,rgba(124,58,237,0.18)_0%,transparent_55%)]" />
       <div className="max-w-6xl mx-auto">
         <div className="grid gap-6 lg:grid-cols-3">
@@ -201,6 +201,33 @@ export default function ResultPage({ params }: ResultPageProps) {
                         : 'Needs review. Check validation errors.'}
                   </div>
                 </div>
+
+                {result?.metadata?.timing_details && (
+                  <div suppressHydrationWarning className="w-full pt-4 border-t">
+                    <div className="text-sm font-medium mb-3">Processing Time</div>
+                    <div className="space-y-2 text-xs text-muted-foreground">
+                      {result.metadata.timing_details.total_time && (
+                        <div className="flex items-center justify-between p-2 rounded bg-muted/50">
+                          <span className="font-medium text-foreground">Total Time:</span>
+                          <span suppressHydrationWarning className="font-semibold text-primary">
+                            {result.metadata.timing_details.total_time}
+                          </span>
+                        </div>
+                      )}
+                      {result.metadata.timing_details.steps && Object.entries(result.metadata.timing_details.steps).length > 0 && (
+                        <div className="space-y-1 mt-2">
+                          <div className="font-medium text-foreground text-[11px]">Steps:</div>
+                          {Object.entries(result.metadata.timing_details.steps).map(([step, time]: [string, any]) => (
+                            <div key={step} suppressHydrationWarning className="flex items-center justify-between pl-2 pr-1">
+                              <span className="capitalize text-xs">{step.replace(/_/g, ' ')}:</span>
+                              <span className="text-xs text-muted-foreground">{time}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -248,7 +275,7 @@ export default function ResultPage({ params }: ResultPageProps) {
           )} */}
 
           {result?.errors?.length ? (
-            <div className="mt-8">
+            <div className="mt-8" suppressHydrationWarning>
               <Card>
                 <CardContent className="p-0">
                   <div className="px-4 sm:px-6 py-4 border-b bg-muted/30 flex items-center justify-between">
