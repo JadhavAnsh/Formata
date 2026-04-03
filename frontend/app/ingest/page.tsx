@@ -1,49 +1,59 @@
 'use client';
 
 import { UploadBox } from '@/components/UploadBox';
-import { parseFile } from '@/utils/fileParser';
+import { ingestService } from '@/services/ingest.service';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 // Store files in memory using a Map
 export const fileCache = new Map<string, File>();
-// Store parsed preview payload in memory to avoid browser storage quota limits
-export const parsedPreviewCache = new Map<string, Awaited<ReturnType<typeof parseFile>>>();
+// Keep legacy map for backward compatibility with existing preview page fallback.
+export const parsedPreviewCache = new Map<string, any>();
 
 export default function IngestPage() {
   const router = useRouter();
   const [isParsing, setIsParsing] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [statusText, setStatusText] = useState('Uploading file...');
 
   const handleFileSelect = async (file: File) => {
+    if (isParsing) return;
+
     setIsParsing(true);
     setError(null);
     
     try {
-      // Parse file client-side for preview (no API call yet)
-      const parsedData = await parseFile(file);
-      
-      // Generate a temporary preview ID (not a real job_id yet)
-      const previewId = `preview_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
-      // Store file in memory cache instead of sessionStorage
-      fileCache.set(previewId, file);
-      parsedPreviewCache.set(previewId, parsedData);
-      
-      // Store only light metadata in sessionStorage for resiliency on navigation
+      setStatusText('Generating sampled preview...');
+
+      const ingestResponse = await ingestService.uploadFile(file, { preview_rows: 100 });
+      const jobId = ingestResponse.job_id || ingestResponse.id;
+      if (!jobId) {
+        throw new Error('Job ID not found in ingest response');
+      }
+
+      fileCache.set(jobId, file);
+
       const fileData = {
-        previewId,
+        previewId: jobId,
         fileName: file.name,
         fileType: file.name.split('.').pop()?.toLowerCase(),
         fileSize: file.size,
         uploadedAt: new Date().toISOString(),
+        parsedData: ingestResponse.preview
+          ? {
+              records: ingestResponse.preview.records || [],
+              columns: ingestResponse.preview.metadata?.columns || [],
+              totalRows: ingestResponse.preview.metadata?.totalRows,
+            }
+          : undefined,
       };
-      
-      // Keep payload minimal to avoid QuotaExceededError in browsers
-      sessionStorage.setItem(`preview_data_${previewId}`, JSON.stringify(fileData));
-      
-      // Navigate to preview with preview_id in params
-      router.push(`/preview/${previewId}`);
+
+      if (fileData.parsedData) {
+        parsedPreviewCache.set(jobId, fileData.parsedData);
+      }
+
+      sessionStorage.setItem(`preview_data_${jobId}`, JSON.stringify(fileData));
+      router.push(`/preview/${jobId}`);
     } catch (err) {
       console.error('File parsing failed:', err);
       setError(err instanceof Error ? err : new Error('Failed to parse file'));
@@ -64,12 +74,13 @@ export default function IngestPage() {
       <div className="w-full max-w-2xl">
         <UploadBox
           onFileSelect={handleFileSelect}
+          disabled={isParsing}
         />
       </div>
       
       {isParsing && (
         <p className="mt-4 text-sm text-gray-500 center">
-          Processing...
+          {statusText}
         </p>
       )}
       

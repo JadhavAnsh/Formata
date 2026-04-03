@@ -2,8 +2,86 @@
  * API utility functions for making HTTP requests
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const DEFAULT_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
+
+function isLocalHostname(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
+function resolveApiBaseUrl(): string {
+  const configured = (DEFAULT_API_BASE_URL || '').trim();
+  if (!configured) {
+    return 'http://localhost:8000';
+  }
+
+  if (typeof window === 'undefined') {
+    return configured;
+  }
+
+  try {
+    const parsed = new URL(configured);
+    const browserHost = window.location.hostname;
+
+    // If frontend is accessed via LAN/IP but API URL is localhost,
+    // rewrite hostname so browser reaches the correct backend host.
+    if (isLocalHostname(parsed.hostname) && !isLocalHostname(browserHost)) {
+      parsed.hostname = browserHost;
+      return parsed.toString().replace(/\/$/, '');
+    }
+
+    return configured;
+  } catch {
+    return configured;
+  }
+}
+
+function normalizeBase(base: string): string {
+  return base.replace(/\/$/, '');
+}
+
+function getApiBaseCandidates(): string[] {
+  const primary = normalizeBase(resolveApiBaseUrl());
+  const candidates = [primary];
+
+  if (typeof window === 'undefined') {
+    return candidates;
+  }
+
+  try {
+    const parsed = new URL(primary);
+    if (!isLocalHostname(parsed.hostname)) {
+      return candidates;
+    }
+
+    const hostCandidates = [window.location.hostname, 'localhost', '127.0.0.1']
+      .map((h) => h.trim())
+      .filter(Boolean);
+
+    for (const host of hostCandidates) {
+      const next = new URL(parsed.toString());
+      next.hostname = host;
+      const nextBase = normalizeBase(next.toString());
+      if (!candidates.includes(nextBase)) {
+        candidates.push(nextBase);
+      }
+    }
+  } catch {
+    // Keep primary candidate only.
+  }
+
+  return candidates;
+}
+
+async function fetchWithTimeout(url: string, config: RequestInit, timeoutMs = 30000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...config, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export interface ApiError {
   message: string;
@@ -39,8 +117,6 @@ export async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
-  
   const config: RequestInit = {
     ...options,
     headers: {
@@ -50,22 +126,72 @@ export async function apiRequest<T>(
     },
   };
 
-  try {
-    const response = await fetch(url, config);
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new ApiRequestError(getErrorMessage(errorData, response.status), response.status, errorData);
-    }
+  const baseCandidates = getApiBaseCandidates();
+  let lastNetworkError: unknown = null;
 
-    return await response.json();
-  } catch (error) {
-    if (error instanceof ApiRequestError) {
-      throw error;
-    }
+  for (const base of baseCandidates) {
+    const url = `${base}${endpoint}`;
+    try {
+      const response = await fetchWithTimeout(url, config);
 
-    throw new ApiRequestError(error instanceof Error ? error.message : 'Network error');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new ApiRequestError(getErrorMessage(errorData, response.status), response.status, errorData);
+      }
+
+      return await response.json();
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        throw error;
+      }
+      lastNetworkError = error;
+    }
   }
+
+  const message = lastNetworkError instanceof Error ? lastNetworkError.message : 'Network error';
+  throw new ApiRequestError(
+    `Failed to reach API endpoint ${endpoint}. Tried: ${baseCandidates.join(', ')}. ${message}`
+  );
+}
+
+export async function apiRequestRaw(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  const config: RequestInit = {
+    ...options,
+    headers: {
+      ...(API_KEY && { 'X-API-Key': API_KEY }),
+      ...options.headers,
+    },
+  };
+
+  const baseCandidates = getApiBaseCandidates();
+  let lastNetworkError: unknown = null;
+
+  for (const base of baseCandidates) {
+    const url = `${base}${endpoint}`;
+    try {
+      const response = await fetchWithTimeout(url, config, 60000);
+
+      if (!response.ok) {
+        const errorData = await response.clone().json().catch(() => ({}));
+        throw new ApiRequestError(getErrorMessage(errorData, response.status), response.status, errorData);
+      }
+
+      return response;
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        throw error;
+      }
+      lastNetworkError = error;
+    }
+  }
+
+  const message = lastNetworkError instanceof Error ? lastNetworkError.message : 'Network error';
+  throw new ApiRequestError(
+    `Failed to reach API endpoint ${endpoint}. Tried: ${baseCandidates.join(', ')}. ${message}`
+  );
 }
 
 export async function apiUpload(
@@ -73,7 +199,6 @@ export async function apiUpload(
   file: File,
   additionalData?: Record<string, any>
 ): Promise<any> {
-  const url = `${API_BASE_URL}${endpoint}`;
   const formData = new FormData();
   formData.append('file', file);
   
@@ -88,25 +213,37 @@ export async function apiUpload(
     headers['X-API-Key'] = API_KEY;
   }
 
-  try {
-    const response = await fetch(url, {
+  const config: RequestInit = {
       method: 'POST',
       headers,
       body: formData,
-    });
+  };
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new ApiRequestError(getErrorMessage(errorData, response.status), response.status, errorData);
+  const baseCandidates = getApiBaseCandidates();
+  let lastNetworkError: unknown = null;
+
+  for (const base of baseCandidates) {
+    const url = `${base}${endpoint}`;
+    try {
+      const response = await fetchWithTimeout(url, config, 60000);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new ApiRequestError(getErrorMessage(errorData, response.status), response.status, errorData);
+      }
+
+      return await response.json();
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        throw error;
+      }
+      lastNetworkError = error;
     }
-
-    return await response.json();
-  } catch (error) {
-    if (error instanceof ApiRequestError) {
-      throw error;
-    }
-
-    throw new ApiRequestError(error instanceof Error ? error.message : 'Network error');
   }
+
+  const message = lastNetworkError instanceof Error ? lastNetworkError.message : 'Network error';
+  throw new ApiRequestError(
+    `Failed to reach API endpoint ${endpoint}. Tried: ${baseCandidates.join(', ')}. ${message}`
+  );
 }
 

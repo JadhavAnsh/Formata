@@ -46,6 +46,36 @@ class TestQualityScore(unittest.TestCase):
         self.assertLess(result['overall_score'], 100.0)
         print(f"\n✓ Data with missing values: {result['overall_score']}/100 (Grade: {result['grade']})")
         print(f"  - Completeness: {result['completeness_score']}/100")
+
+    def test_sparse_hierarchical_data_completeness_is_not_over_penalized(self):
+        """Sparse hierarchical datasets should not collapse to very low completeness."""
+        df = pd.DataFrame({
+            'hts_number': ['0101', None, '0101.21.00', '0101.21.00.10', None],
+            'indent': [0, 1, 2, 3, 3],
+            'description': [
+                'Live horses, asses, mules and hinnies:',
+                'Horses:',
+                'Purebred breeding animals',
+                'Males',
+                'Females'
+            ],
+            'unit_of_quantity': [None, None, None, '["No."]', '["No."]'],
+            'general_rate_of_duty': [None, None, 'Free', None, None],
+            'special_rate_of_duty': [None, None, 'Free', None, None],
+            'column_2_rate_of_duty': [None, None, 'Free', None, None],
+            'quota_quantity': [None, None, None, None, None],
+            'additional_duties': [None, None, None, None, None],
+        })
+
+        result = calculate_data_quality_score(df)
+
+        # This dataset is intentionally sparse in optional fields.
+        # Completeness should reflect preserved structure, not collapse to ~30.
+        self.assertGreater(result['completeness_score'], 55.0)
+        print(
+            f"\n✓ Sparse hierarchical data completeness: "
+            f"{result['completeness_score']}/100"
+        )
     
     def test_duplicate_data_quality_score(self):
         """Test quality score calculation with duplicates"""

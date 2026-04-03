@@ -7,32 +7,35 @@ import { Upload } from 'lucide-react';
 
 interface UploadBoxProps {
   onFileSelect?: (file: File) => void;
+  disabled?: boolean;
 }
 
-export function UploadBox({ onFileSelect }: UploadBoxProps) {
+export function UploadBox({ onFileSelect, disabled = false }: UploadBoxProps) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
+      if (disabled) return;
       const file = event.target.files?.[0];
       if (file && onFileSelect) {
         onFileSelect(file);
       }
     },
-    [onFileSelect]
+    [onFileSelect, disabled]
   );
 
   const handleDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       setIsDragging(false);
+      if (disabled) return;
       const file = e.dataTransfer.files?.[0];
       if (file && onFileSelect) {
         onFileSelect(file);
       }
     },
-    [onFileSelect]
+    [onFileSelect, disabled]
   );
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -45,8 +48,9 @@ export function UploadBox({ onFileSelect }: UploadBoxProps) {
   }, []);
 
   const handleButtonClick = useCallback(() => {
+    if (disabled) return;
     fileInputRef.current?.click();
-  }, []);
+  }, [disabled]);
 
   return (
     <div className="w-full max-w-3xl">
@@ -73,7 +77,7 @@ export function UploadBox({ onFileSelect }: UploadBoxProps) {
                 Drag and drop your file here
               </p>
               <p className="text-muted-foreground text-sm">
-                CSV, JSON, XLSX up to 50MB
+                CSV, JSON, XLSX up to 50MB. Large files process directly.
               </p>
             </div>
             
@@ -84,12 +88,14 @@ export function UploadBox({ onFileSelect }: UploadBoxProps) {
               className="hidden"
               id="file-upload"
               accept=".csv,.json,.xlsx,.xls"
+              disabled={disabled}
             />
             <Button 
               variant="outline" 
               type="button"
               onClick={handleButtonClick}
               className="cursor-pointer"
+              disabled={disabled}
             >
               Select File
             </Button>

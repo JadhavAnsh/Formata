@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -43,24 +43,42 @@ interface FilterFormProps {
 const OPERATORS = {
   text: [
     { value: 'equals', label: 'Equals' },
+    { value: 'not_equals', label: 'Not Equals' },
     { value: 'contains', label: 'Contains' },
+    { value: 'not_contains', label: 'Does Not Contain' },
     { value: 'starts_with', label: 'Starts With' },
     { value: 'ends_with', label: 'Ends With' },
     { value: 'in', label: 'In (comma-separated)' },
+    { value: 'regex', label: 'Regex Match' },
+    { value: 'is_missing', label: 'Is Missing' },
+    { value: 'is_not_missing', label: 'Is Not Missing' },
   ],
   numeric: [
     { value: 'equals', label: 'Equals' },
+    { value: 'not_equals', label: 'Not Equals' },
     { value: '>', label: 'Greater Than' },
     { value: '>=', label: 'Greater Than or Equal' },
     { value: '<', label: 'Less Than' },
     { value: '<=', label: 'Less Than or Equal' },
     { value: 'between', label: 'Between' },
+    { value: 'not_between', label: 'Outside Range' },
+    { value: 'is_missing', label: 'Is Missing' },
+    { value: 'is_not_missing', label: 'Is Not Missing' },
   ],
   datetime: [
     { value: 'equals', label: 'Equals' },
     { value: 'range', label: 'Date Range' },
+    { value: 'before', label: 'Before' },
+    { value: 'after', label: 'After' },
+    { value: 'is_missing', label: 'Is Missing' },
+    { value: 'is_not_missing', label: 'Is Not Missing' },
   ],
-  boolean: [{ value: 'equals', label: 'Equals' }],
+  boolean: [
+    { value: 'equals', label: 'Equals' },
+    { value: 'not_equals', label: 'Not Equals' },
+    { value: 'is_missing', label: 'Is Missing' },
+    { value: 'is_not_missing', label: 'Is Not Missing' },
+  ],
 };
 
 export function FilterForm({
@@ -267,8 +285,10 @@ export function FilterForm({
 
             {columnFilters.map((filter) => {
               const type = getColumnType(filter.column);
-              const isBetween = filter.operator === 'between';
+              const isBetween = filter.operator === 'between' || filter.operator === 'not_between';
               const isRange = filter.operator === 'range';
+              const isMissingCheck = filter.operator === 'is_missing' || filter.operator === 'is_not_missing';
+              const isBooleanEquals = type === 'boolean' && (filter.operator === 'equals' || filter.operator === 'not_equals');
 
               return (
                 <div
@@ -336,22 +356,46 @@ export function FilterForm({
                       </Select>
                     </div>
 
-                    {!isBetween && !isRange && (
+                    {!isBetween && !isRange && !isMissingCheck && (
                       <div className="md:col-span-2">
                         <Label>Value</Label>
-                        <Input
-                          type={
-                            type === 'numeric'
-                              ? 'number'
-                              : type === 'datetime'
-                              ? 'datetime-local'
-                              : 'text'
-                          }
-                          value={filter.value || ''}
-                          onChange={(e) =>
-                            updateColumnFilter(filter.id, { value: e.target.value })
-                          }
-                        />
+                        {isBooleanEquals ? (
+                          <Select
+                            value={filter.value || 'true'}
+                            onValueChange={(value) =>
+                              updateColumnFilter(filter.id, { value })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="true">True</SelectItem>
+                              <SelectItem value="false">False</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Input
+                            type={
+                              type === 'numeric'
+                                ? 'number'
+                                : type === 'datetime'
+                                ? 'datetime-local'
+                                : 'text'
+                            }
+                            placeholder={
+                              filter.operator === 'in'
+                                ? 'e.g. value1, value2, value3'
+                                : filter.operator === 'regex'
+                                ? 'e.g. ^[A-Z]{2}\\d+$'
+                                : 'Enter value'
+                            }
+                            value={filter.value || ''}
+                            onChange={(e) =>
+                              updateColumnFilter(filter.id, { value: e.target.value })
+                            }
+                          />
+                        )}
                       </div>
                     )}
 
@@ -403,6 +447,12 @@ export function FilterForm({
                           />
                         </div>
                       </>
+                    )}
+
+                    {isMissingCheck && (
+                      <div className="md:col-span-2 text-xs text-muted-foreground flex items-end pb-1">
+                        This filter matches missing/non-missing values only and does not need an input value.
+                      </div>
                     )}
                   </div>
                 </div>

@@ -3,6 +3,9 @@
 import pandas as pd
 from typing import Dict, Any
 import os
+import json
+
+from app.services.normalization import normalize_types, standardize_columns, prepare_for_export
 
 
 def csv_to_json(csv_path: str) -> Dict[str, Any]:
@@ -25,41 +28,13 @@ def csv_to_json(csv_path: str) -> Dict[str, Any]:
         # Drop fully empty rows
         df.dropna(how="all", inplace=True)
 
-        # Normalize column names
-        df.columns = (
-            df.columns.astype(str)
-            .str.strip()
-            .str.lower()
-            .str.replace(r"[^\w]+", "_", regex=True)
-            .str.strip("_")
-        )
+        df = standardize_columns(df)
+        df = normalize_types(df)
 
-        # Normalize cell values + best-effort typing
-        for col in df.columns:
-            df[col] = (
-                df[col]
-                .astype(str)
-                .str.strip()
-                .replace(
-                    {
-                        "": None,
-                        "none": None,
-                        "null": None,
-                        "nan": None,
-                        "na": None,
-                        "n/a": None,
-                        "undefined": None
-                    }
-                )
-            )
-
-            # Try numeric conversion safely
-            numeric_series = pd.to_numeric(df[col], errors="coerce")
-            if numeric_series.notna().sum() > 0:
-                df[col] = numeric_series.where(numeric_series.notna(), df[col])
+        export_df = prepare_for_export(df)
 
         # JSON-safe conversion
-        records = df.where(pd.notnull(df), None).to_dict(orient="records")
+        records = json.loads(export_df.to_json(orient="records"))
 
         return {
             "records": records,
@@ -105,12 +80,8 @@ def json_to_csv(json_data: Dict[str, Any], output_path: str) -> None:
     )
 
     # Normalize cell values
-    df = df.map(
-        lambda x: None
-        if str(x).strip().lower()
-        in {"", "none", "null", "nan", "na", "n/a", "undefined"}
-        else x
-    )
+    df = normalize_types(df)
+    export_df = prepare_for_export(df)
 
     # Ensure output directory exists
     output_dir = os.path.dirname(output_path)
@@ -118,4 +89,4 @@ def json_to_csv(json_data: Dict[str, Any], output_path: str) -> None:
         os.makedirs(output_dir, exist_ok=True)
 
     # Write CSV
-    df.to_csv(output_path, index=False)
+    export_df.to_csv(output_path, index=False)

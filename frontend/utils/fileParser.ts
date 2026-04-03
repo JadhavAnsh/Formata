@@ -2,6 +2,8 @@
  * Client-side file parsing utilities (temporary until backend API is ready)
  */
 
+import * as XLSX from 'xlsx';
+
 export interface ParsedData {
   records: Array<Record<string, any>>;
   columns: string[];
@@ -113,8 +115,42 @@ export function parseJSON(content: string): ParsedData {
       columns,
       totalRows: records.length,
     };
-  } catch (error) {
+  } catch {
     throw new Error('Failed to parse JSON file');
+  }
+}
+
+/**
+ * Parse Excel file content (xls/xlsx)
+ */
+export function parseExcel(buffer: ArrayBuffer): ParsedData {
+  try {
+    const workbook = XLSX.read(buffer, { type: 'array' });
+    const firstSheetName = workbook.SheetNames[0];
+
+    if (!firstSheetName) {
+      return { records: [], columns: [], totalRows: 0 };
+    }
+
+    const sheet = workbook.Sheets[firstSheetName];
+    const records = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, {
+      defval: '',
+      raw: false,
+    });
+
+    if (records.length === 0) {
+      return { records: [], columns: [], totalRows: 0 };
+    }
+
+    const columns = Object.keys(records[0]);
+
+    return {
+      records,
+      columns,
+      totalRows: records.length,
+    };
+  } catch {
+    throw new Error('Failed to parse Excel file');
   }
 }
 
@@ -122,13 +158,17 @@ export function parseJSON(content: string): ParsedData {
  * Parse uploaded file
  */
 export async function parseFile(file: File): Promise<ParsedData> {
-  const content = await file.text();
   const extension = file.name.split('.').pop()?.toLowerCase();
 
   if (extension === 'csv') {
+    const content = await file.text();
     return parseCSV(content);
   } else if (extension === 'json') {
+    const content = await file.text();
     return parseJSON(content);
+  } else if (extension === 'xlsx' || extension === 'xls') {
+    const buffer = await file.arrayBuffer();
+    return parseExcel(buffer);
   } else {
     throw new Error(`Unsupported file type: ${extension}`);
   }
@@ -147,6 +187,18 @@ export function applyFiltersClientSide(
   }
 
   let filtered = [...data];
+
+  const isMissingValue = (value: unknown): boolean => {
+    if (value === null || value === undefined) {
+      return true;
+    }
+
+    if (typeof value === 'string') {
+      return value.trim() === '';
+    }
+
+    return false;
+  };
 
   // Process all filters - multiple column filters can be applied
   Object.entries(filters).forEach(([key, rule]) => {
@@ -242,14 +294,22 @@ export function applyFiltersClientSide(
         filtered = filtered.filter(row => {
           const value = row[column];
           
-          // Handle null/undefined values
-          if (value === null || value === undefined) {
-            return false; // Exclude null/undefined values by default
-          }
-          
           // Check if ALL rules match (AND logic)
           return rules.every(ruleItem => {
             if (!ruleItem || typeof ruleItem !== 'object' || !ruleItem.op) {
+              return false;
+            }
+
+            if (ruleItem.op === 'is_missing') {
+              return isMissingValue(value);
+            }
+
+            if (ruleItem.op === 'is_not_missing') {
+              return !isMissingValue(value);
+            }
+
+            // For value-based operations, missing values do not match.
+            if (isMissingValue(value)) {
               return false;
             }
             
@@ -265,15 +325,52 @@ export function applyFiltersClientSide(
                 } else {
                   return String(value) === String(ruleItem.value);
                 }
+
+              case 'not_equals':
+              case '!=':
+                if (columnType === 'numeric') {
+                  return Number(value) !== Number(ruleItem.value);
+                } else if (columnType === 'boolean') {
+                  return Boolean(value) !== Boolean(ruleItem.value);
+                } else if (columnType === 'datetime') {
+                  return new Date(value).getTime() !== new Date(ruleItem.value).getTime();
+                } else {
+                  return String(value) !== String(ruleItem.value);
+                }
                 
               case 'contains':
                 return String(value).toLowerCase().includes(String(ruleItem.value).toLowerCase());
+
+              case 'not_contains':
+                return !String(value).toLowerCase().includes(String(ruleItem.value).toLowerCase());
                 
               case 'starts_with':
                 return String(value).toLowerCase().startsWith(String(ruleItem.value).toLowerCase());
                 
               case 'ends_with':
                 return String(value).toLowerCase().endsWith(String(ruleItem.value).toLowerCase());
+
+              case 'in': {
+                const values = String(ruleItem.value ?? '')
+                  .split(',')
+                  .map((item) => item.trim())
+                  .filter(Boolean);
+
+                if (values.length === 0) {
+                  return true;
+                }
+
+                return values.some((item) => String(value).toLowerCase() === item.toLowerCase());
+              }
+
+              case 'regex': {
+                try {
+                  const regex = new RegExp(String(ruleItem.value ?? ''), 'i');
+                  return regex.test(String(value));
+                } catch {
+                  return false;
+                }
+              }
                 
               case '>':
                 if (columnType === 'numeric') {
@@ -313,12 +410,31 @@ export function applyFiltersClientSide(
                   return numValue >= Number(ruleItem.min) && numValue <= Number(ruleItem.max);
                 }
                 return false;
+
+              case 'not_between':
+                if (columnType === 'numeric') {
+                  const numValue = Number(value);
+                  return numValue < Number(ruleItem.min) || numValue > Number(ruleItem.max);
+                }
+                return false;
                 
               case 'range':
                 if (columnType === 'datetime') {
                   const dateValue = new Date(value);
                   return (!ruleItem.start || dateValue >= new Date(ruleItem.start)) &&
                          (!ruleItem.end || dateValue <= new Date(ruleItem.end));
+                }
+                return false;
+
+              case 'before':
+                if (columnType === 'datetime') {
+                  return new Date(value).getTime() < new Date(ruleItem.value).getTime();
+                }
+                return false;
+
+              case 'after':
+                if (columnType === 'datetime') {
+                  return new Date(value).getTime() > new Date(ruleItem.value).getTime();
                 }
                 return false;
                 

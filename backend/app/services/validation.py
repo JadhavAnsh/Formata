@@ -207,29 +207,45 @@ def _calculate_completeness_score(
     missing_data_report: Dict[str, Any] = None
 ) -> float:
     """
-    Calculate completeness score based on missing data
-    100 = no missing values, 0 = all values missing
+    Calculate completeness score using an adaptive strategy.
+
+    The score combines:
+    - Cell coverage: overall non-null ratio across all cells.
+    - Column coverage balance: rewards columns that carry signal while reducing
+      over-penalization for intentionally sparse/optional columns.
+    - Row presence: checks whether rows are structurally present (at least one
+      non-null value in a row).
+
+    100 = fully complete data, 0 = effectively empty data.
     """
-    total_cells = len(df) * len(df.columns)
+    total_rows = len(df)
+    total_cols = len(df.columns)
+    total_cells = total_rows * total_cols
     if total_cells == 0:
         return 100.0
-    
+
     missing_count = int(df.isnull().sum().sum())
-    completeness_ratio = 1 - (missing_count / total_cells)
-    
-    # Apply exponential scaling to penalize high missing rates more severely
-    score = completeness_ratio * 100
-    
-    # Additional penalty for columns with very high missing rates
-    if missing_data_report and 'columns' in missing_data_report:
-        high_missing_cols = sum(
-            1 for col_data in missing_data_report['columns'].values()
-            if col_data.get('missing_percentage', 0) > 50
-        )
-        if high_missing_cols > 0:
-            penalty = min(20, high_missing_cols * 5)
-            score = max(0, score - penalty)
-    
+    cell_coverage = 1 - (missing_count / total_cells)
+
+    # Ratio of rows that contain at least one non-null value.
+    row_presence = float(df.notna().any(axis=1).mean()) if total_rows > 0 else 1.0
+
+    # Per-column coverage in [0, 1].
+    # Weighted harmonic-like aggregation via sum(c^2)/sum(c) keeps strong signal
+    # columns influential and avoids severe punishment from sparse optional fields.
+    col_coverage = (1 - (df.isnull().sum() / max(total_rows, 1))).astype(float)
+    coverage_sum = float(col_coverage.sum())
+    if coverage_sum > 0:
+        column_coverage_balance = float((col_coverage.pow(2).sum()) / coverage_sum)
+    else:
+        column_coverage_balance = 0.0
+
+    score = (
+        cell_coverage * 0.45
+        + column_coverage_balance * 0.40
+        + row_presence * 0.15
+    ) * 100
+
     return max(0.0, min(100.0, score))
 
 

@@ -28,7 +28,7 @@ def _parse_datetime(series: pd.Series) -> pd.Series:
             message="Could not infer format",
             category=UserWarning,
         )
-        return pd.to_datetime(series, errors="coerce", infer_datetime_format=True)
+        return pd.to_datetime(series, errors="coerce")
 
 
 def detect_column_types(df: pd.DataFrame, confidence_threshold: float = 0.8) -> Dict[str, str]:

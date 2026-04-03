@@ -23,7 +23,7 @@ class ProcessRequest(BaseModel):
     # Missing data handling options
     handle_missing_data: bool = True
     missing_data_strategy: Optional[Dict[str, str]] = None  # Column name -> strategy
-    default_missing_strategy: str = 'fill_smart'  # Default strategy: 'fill_smart', 'fill_mean', 'fill_median', 'fill_mode', 'drop_rows', etc.
+    default_missing_strategy: str = 'preserve'  # Safe default: do not auto-fill or drop unless explicitly requested.
     flag_missing_data: bool = False  # Create flag columns for missing data
 
 

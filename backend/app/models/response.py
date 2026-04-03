@@ -9,6 +9,7 @@ class JobResponse(BaseModel):
     job_id: str
     status: str
     message: Optional[str] = None
+    preview: Optional[dict] = None
 
 
 class StatusResponse(BaseModel):

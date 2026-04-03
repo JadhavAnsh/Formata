@@ -1,6 +1,7 @@
 import type { Dataset } from '@/types/dataset';
 import type { ValidationError } from '@/types/error';
 import { statusService } from './status.service';
+import { apiRequest, apiRequestRaw, ApiRequestError } from './api';
 
 export interface ProcessingResult {
   jobId: string;
@@ -25,41 +26,21 @@ export const resultService = {
    * Get the profile report HTML content for a job
    */
   async getProfileReport(jobId: string): Promise<ProfileReport> {
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
-    const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
-    
-    const url = `${API_BASE_URL}/profile/${jobId}`;
-    
-    const response = await fetch(url, {
-      headers: {
-        ...(API_KEY && { 'X-API-Key': API_KEY }),
-      },
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch profile report: ${response.statusText}`);
-    }
-    
-    return response.json();
+    return apiRequest<ProfileReport>(`/profile/${jobId}`);
   },
 
   /**
    * Download the cleaned dataset file for a job
    */
   async downloadResult(jobId: string): Promise<void> {
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
-    const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
-    
-    const url = `${API_BASE_URL}/result/${jobId}/download`;
-    
-    const response = await fetch(url, {
-      headers: {
-        ...(API_KEY && { 'X-API-Key': API_KEY }),
-      },
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to download: ${response.statusText}`);
+    let response: Response;
+    try {
+      response = await apiRequestRaw(`/result/${jobId}/download`);
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        throw new Error(error.message);
+      }
+      throw error;
     }
     
     // Get filename from Content-Disposition header if available
@@ -95,19 +76,14 @@ export const resultService = {
    * Download the vector pickle file for a job
    */
   async downloadVectorPkl(jobId: string): Promise<void> {
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
-    const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
-    
-    const url = `${API_BASE_URL}/vectors/${jobId}/download?format=pkl`;
-    
-    const response = await fetch(url, {
-      headers: {
-        ...(API_KEY && { 'X-API-Key': API_KEY }),
-      },
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to download vector file: ${response.statusText}`);
+    let response: Response;
+    try {
+      response = await apiRequestRaw(`/vectors/${jobId}/download?format=pkl`);
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        throw new Error(error.message);
+      }
+      throw error;
     }
     
     // Get filename from Content-Disposition header if available
@@ -140,19 +116,14 @@ export const resultService = {
   },
 
     async downloadVectorH5(jobId: string): Promise<void> {
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
-    const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
-    
-    const url = `${API_BASE_URL}/vectors/${jobId}/download?format=h5`;
-    
-    const response = await fetch(url, {
-      headers: {
-        ...(API_KEY && { 'X-API-Key': API_KEY }),
-      },
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to download vector file: ${response.statusText}`);
+    let response: Response;
+    try {
+      response = await apiRequestRaw(`/vectors/${jobId}/download?format=h5`);
+    } catch (error) {
+      if (error instanceof ApiRequestError) {
+        throw new Error(error.message);
+      }
+      throw error;
     }
     
     // Get filename from Content-Disposition header if available
@@ -215,7 +186,10 @@ export const resultService = {
               severity: err.severity || 'error',
             }))
           : resultData.errors,
-        metadata: resultData.metadata || job.metadata,
+        metadata: {
+          ...(job.metadata || {}),
+          ...(resultData.metadata || {}),
+        },
       };
     } catch (error) {
       console.error('Error fetching results:', error);

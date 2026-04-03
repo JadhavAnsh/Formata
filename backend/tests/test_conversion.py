@@ -66,6 +66,29 @@ class TestCSVToJSON:
         assert isinstance(result["records"][0]["age"], (int, float))
         assert isinstance(result["records"][0]["score"], (int, float))
 
+    def test_csv_to_json_dirty_values_are_cleaned(self, tmp_path):
+        """Test that dirty CSV values are normalized during conversion"""
+        csv_file = tmp_path / "dirty.csv"
+        csv_file.write_text(
+            "name,age,salary,join_date,email,city,score\n"
+            "Sydney Haynes,70 years,33301rs,17/02/1990,robertskrista@example.net,unknown,999999\n"
+            "David Wheeler,N/A,\"₹83,724\",Mar 27 2026,welchrichard,South Ryanside,80.71",
+            encoding="utf-8",
+        )
+
+        result = csv_to_json(str(csv_file))
+
+        first = result["records"][0]
+        second = result["records"][1]
+
+        assert first["age"] == 70
+        assert first["salary"] == 33301
+        assert first["email"] == "robertskrista@example.net"
+        assert first["city"] is None
+
+        assert second["age"] is None
+        assert second["email"] is None
+
 
 class TestJSONToCSV:
     """Test JSON to CSV conversion"""
@@ -136,3 +159,20 @@ class TestJSONToCSV:
         
         with pytest.raises(ValueError):
             json_to_csv(json_data, str(output_file))
+
+    def test_json_to_csv_preserves_human_readable_dates(self, tmp_path):
+        """Test that datetime values are exported as readable strings"""
+        json_data = {
+            "records": [
+                {"name": "John", "join_date": "2023-01-01"},
+                {"name": "Jane", "join_date": "2024-02-03"},
+            ]
+        }
+        output_file = tmp_path / "dated-output.csv"
+
+        json_to_csv(json_data, str(output_file))
+
+        output_text = output_file.read_text(encoding="utf-8")
+        assert "2023-01-01" in output_text
+        assert "2024-02-03" in output_text
+        assert "-9223372036854775808" not in output_text

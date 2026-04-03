@@ -222,16 +222,28 @@ class TestMissingData:
         assert result_df['value'].iloc[1] == 0
         assert result_df['value'].iloc[3] == 0
     
-    def test_handle_missing_data_auto_recommendations(self):
-        """Test using automatic recommendations"""
+    def test_handle_missing_data_preserve_default(self):
+        """Test that preserve is the default when no strategy is supplied"""
         df = pd.DataFrame({
             'numeric_col': [1.5, None, 3.5, 4.0, 5.0],
             'string_col': ['a', 'b', None, 'd', 'e']
         })
         
-        # Don't provide strategy, let it use auto-recommendations
         result_df, report = handle_missing_data(df, strategy=None)
         
+        assert result_df['numeric_col'].isna().sum() == 1
+        assert result_df['string_col'].isna().sum() == 1
+        assert report['columns_processed'] == 2
+
+    def test_handle_missing_data_auto_recommendations_when_opted_in(self):
+        """Test automatic recommendations when preserve is not requested"""
+        df = pd.DataFrame({
+            'numeric_col': [1.5, None, 3.5, 4.0, 5.0],
+            'string_col': ['a', 'b', None, 'd', 'e']
+        })
+
+        result_df, report = handle_missing_data(df, strategy=None, default_strategy='fill_mean')
+
         assert result_df['numeric_col'].isna().sum() == 0
         assert result_df['string_col'].isna().sum() == 0
         assert report['columns_processed'] == 2
@@ -300,6 +312,44 @@ class TestMissingData:
         
         assert result_df.isna().sum().sum() == 0
         assert report['columns_processed'] == 2
+
+    def test_handle_missing_data_preserve_strategy_keeps_missing_values(self):
+        """Preserve strategy should keep schema and missing values unchanged."""
+        df = pd.DataFrame({
+            'col1': [1, None, 3],
+            'col2': [None, None, 'x']
+        })
+
+        result_df, report = handle_missing_data(
+            df,
+            strategy={},
+            default_strategy='preserve'
+        )
+
+        assert list(result_df.columns) == ['col1', 'col2']
+        assert result_df.equals(df)
+        assert report['columns_dropped'] == 0
+        assert report['rows_dropped'] == 0
+        assert report['columns_processed'] == 2
+
+    def test_preserve_default_avoids_auto_drop_on_high_missing_columns(self):
+        """Even with high missingness, preserve default must not drop columns."""
+        df = pd.DataFrame({
+            'id': [1, 2, 3, 4],
+            'mostly_missing': [None, None, None, 'value'],
+            'all_missing': [None, None, None, None],
+        })
+
+        result_df, report = handle_missing_data(
+            df,
+            strategy={},
+            default_strategy='preserve'
+        )
+
+        assert 'mostly_missing' in result_df.columns
+        assert 'all_missing' in result_df.columns
+        assert report['columns_dropped'] == 0
+        assert result_df.isna().sum()['all_missing'] == 4
 
 
 if __name__ == '__main__':

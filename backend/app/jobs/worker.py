@@ -2,6 +2,7 @@
 import asyncio
 from typing import Dict, Any
 import traceback
+import threading
 
 from app.jobs.store import job_store, JobStatus
 from app.utils.logger import logger
@@ -71,4 +72,14 @@ def start_background_job(job_id: str, file_path: str, config: Dict[str, Any]) ->
     """
     Start a background processing job (non-blocking)
     """
-    asyncio.create_task(process_job_async(job_id, file_path, config))
+    def _runner() -> None:
+        try:
+            asyncio.run(process_job_async(job_id, file_path, config))
+        except Exception as e:
+            error_message = f"{str(e)}\n{traceback.format_exc()}"
+            job_store.add_job_error(job_id, error_message)
+            job_store.update_job_status(job_id, JobStatus.FAILED)
+            logger.error(f"Thread runner failed for job {job_id}: {error_message}")
+
+    thread = threading.Thread(target=_runner, name=f"formata-job-{job_id[:8]}", daemon=True)
+    thread.start()

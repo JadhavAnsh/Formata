@@ -48,6 +48,31 @@ I've fully wired the job flow with all services and created a complete, producti
 
 ---
 
+## 🧭 CSV/JSON Fix Playbook
+
+Use this sequence when fixing dirty CSV or JSON inputs:
+
+1. Parse the file as text-first data.
+2. Standardize column names before any type inference.
+3. Normalize missing tokens like `N/A`, `unknown`, and `not_provided` to nulls.
+4. Coerce dates, numeric fields, booleans, and emails with column-aware rules.
+5. Keep `preserve` as the default missing-data strategy unless a column strategy is explicit.
+6. Generate raw and clean ydata profiles for every job.
+7. Save the cleaned artifact as the actual output file, not a renamed raw copy.
+8. Add a regression test for each new dirty-value pattern before merging.
+
+## ✅ Maintenance Checklist
+
+- [x] Preserve-by-default missing-data flow
+- [x] Raw and clean profiling artifacts
+- [x] Regression tests for dirty CSV values
+- [x] Fallback HTML if ydata-profiling is unavailable
+- [ ] Extend profile generation to JSON edge cases with deeply nested records
+- [ ] Remove deprecated pandas warnings in remaining services
+- [ ] Add one pipeline smoke test for end-to-end CSV and JSON jobs
+
+---
+
 ## 🔌 Data Flow (How It's Wired)
 
 ```

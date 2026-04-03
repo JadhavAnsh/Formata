@@ -22,6 +22,21 @@ class ProcessConfig(BaseModel):
     output_format: str = "csv"
     detect_data_quality_issues: bool = True
 
+    # Missing data handling options
+    handle_missing_data: bool = True
+    missing_data_strategy: Optional[Dict[str, str]] = None
+    default_missing_strategy: str = "preserve"
+    flag_missing_data: bool = False
+    use_knn_imputation: bool = True
+    knn_neighbors: int = 5
+
+    # Performance and optional heavy stages
+    enable_auto_schema: bool = True
+    enable_drift_detection: bool = True
+    enable_profiles: bool = True
+    enable_vectorization: bool = False
+    result_preview_rows: int = 2000
+
 
 @router.post("/{job_id}", response_model=JobResponse)
 async def process_job(job_id: str, config: ProcessConfig = ProcessConfig()):

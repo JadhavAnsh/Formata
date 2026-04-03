@@ -57,6 +57,8 @@ backend/app/services/data/
 backend/storage/uploads/**
 backend/storage/outputs/**
 backend/storage/reports/**
+backend/storage/jobs/**
+backend/storage/errors/*
 
 # Keep error folder structure available in repo
 !backend/storage/errors/

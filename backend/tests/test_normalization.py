@@ -4,7 +4,7 @@ Testing column standardization and type normalization
 """
 import pytest
 import pandas as pd
-from app.services.normalization import standardize_columns, normalize_types
+from app.services.normalization import standardize_columns, normalize_types, prepare_for_export
 
 
 class TestStandardizeColumns:
@@ -139,3 +139,55 @@ class TestNormalizeTypes:
         result = normalize_types(df)
         # Whitespace should be handled
         assert result is not None
+
+    def test_normalize_dirty_csv_values(self):
+        """Test normalization of common dirty CSV values"""
+        df = pd.DataFrame({
+            "age": ["70 years", "21 years", "unknown"],
+            "salary": ["33301rs", "₹83,724", "N/A"],
+            "join_date": ["17/02/1990", "Mar 27 2026", "not_provided"],
+            "email": ["robertskrista@example.net", "welchrichard", "unknown"],
+            "city": ["", "unknown", "South Ryanside"],
+        })
+
+        result = normalize_types(df)
+
+        assert pd.api.types.is_integer_dtype(result["age"])
+        assert result["age"].iloc[0] == 70
+        assert result["age"].iloc[1] == 21
+        assert pd.isna(result["age"].iloc[2])
+
+        assert pd.api.types.is_numeric_dtype(result["salary"])
+        assert result["salary"].iloc[0] == 33301
+        assert result["salary"].iloc[1] == 83724
+        assert pd.isna(result["salary"].iloc[2])
+
+        assert pd.api.types.is_datetime64_any_dtype(result["join_date"])
+        assert pd.isna(result["join_date"].iloc[2])
+
+        assert result["email"].iloc[0] == "robertskrista@example.net"
+        assert pd.isna(result["email"].iloc[1])
+        assert pd.isna(result["email"].iloc[2])
+
+        assert pd.isna(result["city"].iloc[0])
+        assert pd.isna(result["city"].iloc[1])
+        assert result["city"].iloc[2] == "South Ryanside"
+
+
+class TestPrepareForExport:
+    """Test export-safe formatting behavior"""
+
+    def test_prepare_for_export_converts_epoch_date_ints(self):
+        """Epoch nanoseconds in datetime-like columns should export as readable dates"""
+        df = pd.DataFrame(
+            {
+                "join_date": [635212800000000000, -9223372036854775808, 1774569600000000000],
+                "name": ["A", "B", "C"],
+            }
+        )
+
+        result = prepare_for_export(df)
+
+        assert result["join_date"].iloc[0] == "1990-02-17"
+        assert result["join_date"].iloc[1] is None
+        assert result["join_date"].iloc[2] == "2026-03-27"

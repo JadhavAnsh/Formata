@@ -2,10 +2,72 @@
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, List, Optional, Literal
+from sklearn.impute import KNNImputer
 from app.utils.logger import logger
 
 
-MissingDataStrategy = Literal['fill_mean', 'fill_median', 'fill_mode', 'fill_smart', 'fill_forward', 'fill_backward', 'fill_value', 'drop_rows', 'drop_columns', 'flag']
+MissingDataStrategy = Literal['fill_mean', 'fill_median', 'fill_mode', 'fill_smart', 'fill_forward', 'fill_backward', 'fill_value', 'drop_rows', 'drop_columns', 'flag', 'preserve']
+
+
+def _safe_mode(series: pd.Series) -> Any:
+    modes = series.mode(dropna=True)
+    return modes.iloc[0] if not modes.empty else None
+
+
+def knn_impute_dataframe(
+    df: pd.DataFrame,
+    target_columns: Optional[List[str]] = None,
+    n_neighbors: int = 5,
+) -> tuple[pd.DataFrame, Dict[str, Any]]:
+    """
+    Impute missing numeric values using KNN across correlated numeric features.
+
+    This function imputes only numeric columns and leaves non-numeric columns untouched.
+    """
+    if df is None or df.empty:
+        return df, {"status": "skipped", "reason": "empty_dataframe", "columns": {}}
+
+    result_df = df.copy()
+
+    numeric_cols = result_df.select_dtypes(include=[np.number]).columns.tolist()
+    if target_columns is not None:
+        numeric_cols = [c for c in numeric_cols if c in target_columns]
+
+    missing_numeric_cols = [c for c in numeric_cols if result_df[c].isna().sum() > 0]
+    if not missing_numeric_cols:
+        return result_df, {"status": "skipped", "reason": "no_numeric_missing_values", "columns": {}}
+
+    fit_columns = result_df.select_dtypes(include=[np.number]).columns.tolist()
+    if len(fit_columns) == 0:
+        return result_df, {"status": "skipped", "reason": "no_numeric_columns", "columns": {}}
+
+    report: Dict[str, Any] = {
+        "status": "imputed",
+        "method": "knn",
+        "n_neighbors": int(n_neighbors),
+        "columns": {},
+    }
+
+    for col in missing_numeric_cols:
+        report["columns"][col] = {
+            "missing_before": int(result_df[col].isna().sum()),
+            "missing_after": int(result_df[col].isna().sum()),
+        }
+
+    try:
+        imputer = KNNImputer(n_neighbors=max(1, int(n_neighbors)), weights="distance")
+        imputed_matrix = imputer.fit_transform(result_df[fit_columns])
+        imputed_df = pd.DataFrame(imputed_matrix, columns=fit_columns, index=result_df.index)
+
+        for col in missing_numeric_cols:
+            result_df[col] = imputed_df[col]
+            report["columns"][col]["missing_after"] = int(result_df[col].isna().sum())
+
+        return result_df, report
+    except Exception as exc:
+        report["status"] = "error"
+        report["error"] = str(exc)
+        return df, report
 
 
 def smart_impute_column(
@@ -64,30 +126,25 @@ def smart_impute_column(
 
         # Branch A: Numeric columns use skewness-aware mean vs median.
         if pd.api.types.is_numeric_dtype(series):
-            # Compute skewness and normalize possible NaN values for edge cases.
             skewness = float(non_null.skew())
             if not np.isfinite(skewness):
                 skewness = 0.0
             report["skewness"] = skewness
-
-            # Choose method based on skew magnitude.
             if abs(skewness) < skew_threshold:
                 method = "mean"
                 fill_value = float(non_null.mean())
             else:
                 method = "median"
                 fill_value = float(non_null.median())
+            result_df[column_name] = series.fillna(fill_value)
 
         # Branch B: Non-numeric columns use mode (most frequent value).
         else:
             method = "mode"
-            modes = non_null.mode(dropna=True)
-            if modes.empty:
+            fill_value = _safe_mode(non_null)
+            if fill_value is None:
                 raise ValueError(f"Column '{column_name}' has no valid mode value")
-            fill_value = modes.iloc[0]
-
-        # Apply the imputation value to all missing entries.
-        result_df[column_name] = series.fillna(fill_value)
+            result_df[column_name] = series.fillna(fill_value)
 
         # Capture final stats for traceability.
         report["status"] = "imputed"
@@ -132,8 +189,11 @@ def analyze_missing_data(df: pd.DataFrame) -> Dict[str, Any]:
             
             # Determine column type for recommendation
             col_dtype = str(df[col].dtype)
+            col_lower = str(col).lower()
             
-            if 'int' in col_dtype or 'float' in col_dtype:
+            if 'email' in col_lower or 'mail' in col_lower or 'id' in col_lower or 'uuid' in col_lower:
+                recommended = 'preserve'
+            elif 'int' in col_dtype or 'float' in col_dtype:
                 recommended = 'fill_smart'
             elif 'bool' in col_dtype:
                 recommended = 'fill_mode'
@@ -159,9 +219,11 @@ def analyze_missing_data(df: pd.DataFrame) -> Dict[str, Any]:
 def handle_missing_data(
     df: pd.DataFrame,
     strategy: Optional[Dict[str, str]] = None,
-    default_strategy: str = 'fill_mean',
+    default_strategy: str = 'preserve',
     fill_value: Any = None,
-    flag_column_suffix: str = '_missing'
+    flag_column_suffix: str = '_missing',
+    use_knn_for_smart: bool = False,
+    knn_neighbors: int = 5,
 ) -> tuple[pd.DataFrame, Dict[str, Any]]:
     """
     Handle missing data in DataFrame using specified strategies
@@ -193,10 +255,40 @@ def handle_missing_data(
     # Analyze missing data first
     analysis = analyze_missing_data(df)
     
-    # If no strategy provided, use recommendations
+    # Preserve-by-default means do not auto-fill or drop unless the caller
+    # explicitly supplies a strategy. Otherwise, keep the recommendation-driven
+    # behavior for legacy/default non-preserve flows.
     if strategy is None:
-        strategy = analysis.get("recommendations", {})
+        if default_strategy == "preserve":
+            strategy = {}
+        else:
+            strategy = analysis.get("recommendations", {})
     
+    # Apply KNN smart imputation once across numeric columns so predictions can use
+    # feature correlations from the full numeric matrix.
+    smart_knn_targets = [
+        col
+        for col in df.columns
+        if df[col].isnull().sum() > 0 and strategy.get(col, default_strategy) == 'fill_smart'
+    ]
+    if use_knn_for_smart and smart_knn_targets:
+        df, knn_report = knn_impute_dataframe(
+            df,
+            target_columns=smart_knn_targets,
+            n_neighbors=knn_neighbors,
+        )
+        if knn_report.get("status") == "imputed":
+            for col in smart_knn_targets:
+                col_report = knn_report.get("columns", {}).get(col, {})
+                before = col_report.get("missing_before", 0)
+                after = col_report.get("missing_after", before)
+                if before > 0 and after == 0:
+                    report["actions"][col] = (
+                        f"KNN imputation (n_neighbors={knn_report.get('n_neighbors', 5)})"
+                    )
+        elif knn_report.get("status") == "error":
+            logger.warning(f"KNN imputation failed; falling back per-column. Error: {knn_report.get('error')}")
+
     # Process each column
     columns_to_drop = []
     
@@ -214,8 +306,8 @@ def handle_missing_data(
                     report["actions"][col] = f"Filled with mean ({fill_val:.2f})"
                 else:
                     # Fall back to mode for non-numeric
-                    fill_val = df[col].mode()[0] if not df[col].mode().empty else None
-                    df[col] = df[col].fillna(fill_val).infer_objects(copy=False)
+                    fill_val = _safe_mode(df[col])
+                    df[col] = df[col].fillna(fill_val).infer_objects()
                     report["actions"][col] = f"Filled with mode (mean not applicable for non-numeric)"
             
             elif col_strategy == 'fill_median':
@@ -224,16 +316,21 @@ def handle_missing_data(
                     df[col] = df[col].fillna(fill_val)
                     report["actions"][col] = f"Filled with median ({fill_val:.2f})"
                 else:
-                    fill_val = df[col].mode()[0] if not df[col].mode().empty else None
-                    df[col] = df[col].fillna(fill_val).infer_objects(copy=False)
+                    fill_val = _safe_mode(df[col])
+                    df[col] = df[col].fillna(fill_val).infer_objects()
                     report["actions"][col] = f"Filled with mode (median not applicable)"
             
             elif col_strategy == 'fill_mode':
-                mode_val = df[col].mode()[0] if not df[col].mode().empty else None
-                df[col] = df[col].fillna(mode_val).infer_objects(copy=False)
+                mode_val = _safe_mode(df[col])
+                df[col] = df[col].fillna(mode_val).infer_objects()
                 report["actions"][col] = f"Filled with mode ({mode_val})"
 
             elif col_strategy == 'fill_smart':
+                if col in report["actions"]:
+                    # Already handled by matrix-level KNN pass.
+                    report["columns_processed"] += 1
+                    logger.info(f"Missing data handled for '{col}': {col_strategy}")
+                    continue
                 df, smart_report = smart_impute_column(df, col)
                 if smart_report.get("status") == "error":
                     raise ValueError(smart_report.get("error") or "Smart imputation failed")
@@ -273,6 +370,9 @@ def handle_missing_data(
                 flag_col_name = f"{col}{flag_column_suffix}"
                 df[flag_col_name] = df[col].isnull()
                 report["actions"][col] = f"Created flag column '{flag_col_name}'"
+
+            elif col_strategy == 'preserve':
+                report["actions"][col] = "Preserved missing values (no fill/drop)"
             
             report["columns_processed"] += 1
             logger.info(f"Missing data handled for '{col}': {col_strategy}")

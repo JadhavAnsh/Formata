@@ -1,4 +1,4 @@
-import { apiRequest } from './api';
+import { ApiRequestError, apiRequest } from './api';
 import type { Job } from '@/types/job';
 
 /**
@@ -38,6 +38,11 @@ export const statusService = {
       console.log('Normalized job:', normalized);
       return normalized;
     } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 404) {
+        console.warn(`Job ${jobId} not found. The backend may have restarted or the job state expired.`);
+        throw new Error(`Job ${jobId} not found. Please upload the file again to start a new job.`);
+      }
+
       console.error('Error fetching job status:', error);
       throw error;
     }

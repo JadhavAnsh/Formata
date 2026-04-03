@@ -88,10 +88,10 @@ def _try_parse_datetime(series: pd.Series) -> Optional[pd.Series]:
             continue
     
     # Fallback to pandas inference
-    try:
-        return pd.to_datetime(series, errors="coerce", infer_datetime_format=True)
-    except Exception:
-        return None
+        try:
+            return pd.to_datetime(series, errors="coerce")
+        except Exception:
+            return None
 
 
 def _analyze_text_content(series: pd.Series, non_null_count: int) -> Dict[str, Any]:

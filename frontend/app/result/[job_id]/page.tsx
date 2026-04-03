@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import { ErrorTable } from '@/components/ErrorTable';
+import { ResultView } from '@/components/ResultView';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useResult } from '@/hooks/useResult';
@@ -22,8 +23,26 @@ function clampToPercent(value: number) {
   return Math.max(0, Math.min(100, value));
 }
 
+function formatTimingStep(value: any): string {
+  if (value && typeof value === 'object') {
+    if (typeof value.duration_formatted === 'string' && value.duration_formatted) {
+      return value.duration_formatted;
+    }
+    if (typeof value.duration_seconds === 'number' && Number.isFinite(value.duration_seconds)) {
+      return `${value.duration_seconds.toFixed(2)}s`;
+    }
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return `${value.toFixed(2)}s`;
+  }
+
+  return String(value ?? '');
+}
+
 export default function ResultPage({ params }: ResultPageProps) {
   const [job_id, setjob_id] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -34,6 +53,8 @@ export default function ResultPage({ params }: ResultPageProps) {
     jobId: job_id,
     enabled: !!job_id,
   });
+
+  const canDownloadClean = Boolean(result?.afterData?.rows?.length || result?.afterData?.rowCount);
 
   if (!job_id) {
     return (
@@ -64,6 +85,13 @@ export default function ResultPage({ params }: ResultPageProps) {
   const radius = 44;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference - (qualityScore / 100) * circumference;
+  const timingDetails = result?.metadata?.timing_details;
+  const totalTiming =
+    timingDetails?.total_formatted ??
+    timingDetails?.total_time ??
+    (typeof result?.metadata?.processing_time === 'number'
+      ? `${result.metadata.processing_time.toFixed(2)}s`
+      : undefined);
 
   return (
     <div className="min-h-screen mt-22 pt-24 sm:pt-28 pb-16 px-4 sm:px-6 relative" suppressHydrationWarning>
@@ -90,10 +118,14 @@ export default function ResultPage({ params }: ResultPageProps) {
             <div className="flex flex-col sm:flex-row gap-3">
               <Button
                 className="w-full sm:w-auto sm:flex-1"
+                disabled={!canDownloadClean || isLoading}
                 onClick={() => {
                   if (!job_id) return;
+                  setActionError(null);
                   resultService.downloadResult(job_id).catch((err) => {
                     console.error('Download failed:', err);
+                    const message = err instanceof Error ? err.message : 'Failed to download result file.';
+                    setActionError(message);
                   });
                 }}
               >
@@ -118,8 +150,11 @@ export default function ResultPage({ params }: ResultPageProps) {
               className="w-full mt-3"
               onClick={() => {
                 if (!job_id) return;
+                setActionError(null);
                 resultService.downloadVectorPkl(job_id).catch((err) => {
                   console.error('Download failed:', err);
+                  const message = err instanceof Error ? err.message : 'Failed to download vector file.';
+                  setActionError(message);
                 });
               }}
             >
@@ -132,8 +167,11 @@ export default function ResultPage({ params }: ResultPageProps) {
               className="w-full mt-3"
               onClick={() => {
                 if (!job_id) return;
+                setActionError(null);
                 resultService.downloadVectorH5(job_id).catch((err) => {
                   console.error('Download failed:', err);
+                  const message = err instanceof Error ? err.message : 'Failed to download vector file.';
+                  setActionError(message);
                 });
               }}
             >
@@ -146,6 +184,12 @@ export default function ResultPage({ params }: ResultPageProps) {
             {error && (
               <div className="mt-6 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
                 {error.message}
+              </div>
+            )}
+
+            {actionError && (
+              <div className="mt-3 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
+                {actionError}
               </div>
             )}
           </div>
@@ -202,25 +246,25 @@ export default function ResultPage({ params }: ResultPageProps) {
                   </div>
                 </div>
 
-                {result?.metadata?.timing_details && (
+                {(timingDetails || result?.metadata?.processing_time !== undefined) && (
                   <div suppressHydrationWarning className="w-full pt-4 border-t">
                     <div className="text-sm font-medium mb-3">Processing Time</div>
                     <div className="space-y-2 text-xs text-muted-foreground">
-                      {result.metadata.timing_details.total_time && (
+                      {totalTiming && (
                         <div className="flex items-center justify-between p-2 rounded bg-muted/50">
                           <span className="font-medium text-foreground">Total Time:</span>
                           <span suppressHydrationWarning className="font-semibold text-primary">
-                            {result.metadata.timing_details.total_time}
+                            {totalTiming}
                           </span>
                         </div>
                       )}
-                      {result.metadata.timing_details.steps && Object.entries(result.metadata.timing_details.steps).length > 0 && (
+                      {timingDetails?.steps && Object.entries(timingDetails.steps).length > 0 && (
                         <div className="space-y-1 mt-2">
                           <div className="font-medium text-foreground text-[11px]">Steps:</div>
-                          {Object.entries(result.metadata.timing_details.steps).map(([step, time]: [string, any]) => (
+                          {Object.entries(timingDetails.steps).map(([step, time]: [string, any]) => (
                             <div key={step} suppressHydrationWarning className="flex items-center justify-between pl-2 pr-1">
                               <span className="capitalize text-xs">{step.replace(/_/g, ' ')}:</span>
-                              <span className="text-xs text-muted-foreground">{time}</span>
+                              <span className="text-xs text-muted-foreground">{formatTimingStep(time)}</span>
                             </div>
                           ))}
                         </div>
@@ -242,37 +286,24 @@ export default function ResultPage({ params }: ResultPageProps) {
             </Link>
           </div>
 
-          {/* {result && (
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Card>
-                <CardContent className="p-0">
-                  <div className="px-4 sm:px-6 py-4 border-b bg-muted/30 flex items-center justify-between">
-                    <div className="text-sm font-semibold text-rose-300/90">BEFORE: RAW DATA</div>
-                    <div className="text-xs text-muted-foreground">
-                      {result.beforeData?.rows?.length ?? 0} rows
-                    </div>
+          {result?.afterData?.rows?.length ? (
+            <Card>
+              <CardContent className="p-0">
+                <div className="px-4 sm:px-6 py-4 border-b bg-muted/30 flex items-center justify-between">
+                  <div className="text-sm font-semibold">Visual Diff: Raw vs Processed</div>
+                  <div className="text-xs text-muted-foreground">
+                    {result.afterData?.rowCount ?? result.afterData.rows.length} rows
                   </div>
-                  <div className="p-4 sm:p-6">
-                    {result.beforeData ? <ResultTable beforeData={result.beforeData.rows} /> : <div className="text-muted-foreground">No raw data</div>}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardContent className="p-0">
-                  <div className="px-4 sm:px-6 py-4 border-b bg-muted/30 flex items-center justify-between">
-                    <div className="text-sm font-semibold text-emerald-300/90">AFTER: STRUCTURED DATA</div>
-                    <div className="text-xs text-muted-foreground">
-                      {result.afterData?.rows?.length ?? 0} rows
-                    </div>
-                  </div>
-                  <div className="p-4 sm:p-6">
-                    {result.afterData ? <ResultTable afterData={result.afterData.rows} /> : <div className="text-muted-foreground">No structured data</div>}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )} */}
+                </div>
+                <div className="p-4 sm:p-6">
+                  <ResultView
+                    beforeRows={result.beforeData?.rows || []}
+                    afterRows={result.afterData.rows || []}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
 
           {result?.errors?.length ? (
             <div className="mt-8" suppressHydrationWarning>
