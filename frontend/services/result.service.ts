@@ -12,7 +12,7 @@ export interface ProcessingResult {
 
 export interface ProfileReport {
   job_id: string;
-  report_path: string;
+  report_path?: string;
   content_type: string;
   content: string;
 }
@@ -52,8 +52,18 @@ export const resultService = {
     if (!response.ok) {
       throw new Error(`Failed to fetch profile report: ${response.statusText}`);
     }
-    
-    return response.json();
+
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      return response.json();
+    }
+
+    const html = await response.text();
+    return {
+      job_id: jobId,
+      content_type: contentType || 'text/html',
+      content: html,
+    };
   },
 
   /**

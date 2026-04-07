@@ -6,33 +6,6 @@ import { chromium } from 'playwright';
 
 export const runtime = 'nodejs';
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function wrapErrorTextAsHtml(jobId: string, errorText: string) {
-  const body = escapeHtml(errorText || 'No errors to report.');
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Formata Error Report - ${escapeHtml(jobId)}</title>
-  </head>
-  <body>
-    <main style="max-width: 1200px; margin: 24px auto; padding: 0 16px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;">
-      <h1 style="font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;">Error Report</h1>
-      <p style="font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; opacity: 0.8;">Job ID: ${escapeHtml(jobId)}</p>
-      <pre style="white-space: pre-wrap; word-break: break-word; border: 1px solid #d4d4d8; border-radius: 8px; padding: 16px;">${body}</pre>
-    </main>
-  </body>
-</html>`;
-}
-
 function injectCss(html: string, css: string) {
   const marker = 'data-formata-pdf-css="1"';
   if (html.includes(marker)) return html;
@@ -50,6 +23,19 @@ function injectCss(html: string, css: string) {
   }
 
   return `${injection}${html}`;
+}
+
+async function extractProfileHtml(response: Response): Promise<string> {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const payload = await response.json();
+    const html = payload?.content || payload?.html;
+    if (!html) {
+      throw new Error('No HTML content in profile response');
+    }
+    return html;
+  }
+  return response.text();
 }
 
 function setRootTheme(html: string, theme: 'light' | 'dark') {
@@ -120,8 +106,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ job_
   let html: string;
 
   try {
-    // Call backend API to get generated error report
-    const apiUrl = `${API_BASE_URL}/errors/${job_id}/download`;
+    // Call backend profile API (ydata-profiling report)
+    const apiUrl = `${API_BASE_URL}/profile/${job_id}`;
     const response = await fetch(apiUrl, {
       headers: {
         ...(jwt && { 'X-Appwrite-JWT': jwt }),
@@ -132,26 +118,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ job_
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const detail = errorData?.detail || response.statusText;
-      throw new Error(`Failed to fetch error report: ${detail}`);
+      throw new Error(`Failed to fetch profile report: ${detail}`);
     }
 
-    const reportText = await response.text();
-    html = wrapErrorTextAsHtml(job_id, reportText);
-
-    if (!html) {
-      throw new Error('No error report content in response');
-    }
+    html = await extractProfileHtml(response);
   } catch {
-    // Fallback to local text report if API fails
-    const reportPath = path.join(process.cwd(), 'storage', 'errors', `${job_id}_errors.txt`);
-    const fallbackPath = path.join(process.cwd(), 'storage', 'errors', `${job_id}_error.txt`);
+    // Fallback to local profile HTML if API fails
+    const reportPath = path.join(process.cwd(), 'storage', 'reports', `${job_id}_clean_profile.html`);
+    const fallbackPath = path.join(process.cwd(), `${job_id}_clean_profile.html`);
 
     try {
-      const reportText = await readFile(reportPath, 'utf8');
-      html = wrapErrorTextAsHtml(job_id, reportText);
+      html = await readFile(reportPath, 'utf8');
     } catch {
-      const fallbackText = await readFile(fallbackPath, 'utf8');
-      html = wrapErrorTextAsHtml(job_id, fallbackText);
+      html = await readFile(fallbackPath, 'utf8');
     }
   }
 

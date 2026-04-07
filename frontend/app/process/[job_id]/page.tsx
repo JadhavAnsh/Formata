@@ -2,11 +2,14 @@
 
 import { ProgressBar } from '@/components/ProgressBar';
 import { useJobStatus } from '@/hooks/useJobStatus';
+import { queryKeys } from '@/lib/queryKeys';
 import type { FilterParams } from '@/services/preview.service';
 import { processService } from '@/services/process.service';
+import { resultService } from '@/services/result.service';
 import { useAuth } from '@/context/AuthContext';
+import { useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 
 interface ProcessPageProps {
   params: Promise<{
@@ -14,11 +17,19 @@ interface ProcessPageProps {
   }>;
 }
 
-export default function ProcessPage({ params }: ProcessPageProps) {
+const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
+
+function ProcessPageInner({ params }: ProcessPageProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { getJwt } = useAuth();
+  const getJwtRef = useRef(getJwt);
+  useEffect(() => {
+    getJwtRef.current = getJwt;
+  });
   const searchParams = useSearchParams();
   const [job_id, setjob_id] = useState<string | null>(null);
+  const navigatedRef = useRef(false);
   
   // Initialize filters from URL params
   const [filters] = useState<FilterParams | null>(() => {
@@ -59,15 +70,35 @@ export default function ProcessPage({ params }: ProcessPageProps) {
     jobId: job_id,
     pollInterval: 2000,
     enabled: !!job_id,
-    onStatusChange: (job) => {
-      const jobIdToUse = job.job_id || job.id || job_id;
-      if (job.status === 'completed') {
-        router.push(`/result/${jobIdToUse}`);
-      } else if (job.status === 'failed' || job.status === 'cancelled') {
-        router.push(`/result/${jobIdToUse}`);
-      }
-    },
   });
+
+  const jobStatus = job?.status;
+  const navigateJobId = (job?.job_id || job?.id || job_id) ?? null;
+
+  useEffect(() => {
+    if (!job_id || !jobStatus || navigatedRef.current) return;
+    if (!TERMINAL.has(jobStatus)) return;
+
+    const id = navigateJobId;
+    if (!id) return;
+
+    navigatedRef.current = true;
+
+    void (async () => {
+      try {
+        const jwt = await getJwtRef.current();
+        if (jwt) {
+          await queryClient.prefetchQuery({
+            queryKey: queryKeys.jobResult(id),
+            queryFn: () => resultService.getResults(id, jwt),
+          });
+        }
+      } catch {
+        // Result page will fetch on mount if prefetch fails
+      }
+      router.replace(`/result/${id}`);
+    })();
+  }, [jobStatus, navigateJobId, job_id, queryClient, router]);
 
   // Start processing if job is pending
   useEffect(() => {
@@ -183,3 +214,21 @@ export default function ProcessPage({ params }: ProcessPageProps) {
   );
 }
 
+export default function ProcessPage({ params }: ProcessPageProps) {
+  return (
+    <Suspense
+      fallback={
+        <div className="container mx-auto mt-16 sm:mt-20 px-4 sm:px-6 max-w-4xl">
+          <div className="flex items-center justify-center p-8">
+            <div className="flex items-center gap-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
+              <p className="text-muted-foreground">Loading...</p>
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <ProcessPageInner params={params} />
+    </Suspense>
+  );
+}

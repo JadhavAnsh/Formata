@@ -1,8 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { resultService } from '@/services/result.service';
 import { useAuth } from '@/context/AuthContext';
+import { queryKeys } from '@/lib/queryKeys';
+import { useJobStore } from '@/stores/jobStore';
 import type { ProcessingResult } from '@/services/result.service';
 
 interface UseResultOptions {
@@ -19,43 +22,42 @@ export function useResult({
   onError,
 }: UseResultOptions) {
   const { getJwt } = useAuth();
-  const [result, setResult] = useState<ProcessingResult | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const setResultInStore = useJobStore((state) => state.setResult);
 
-  const fetchResult = useCallback(async () => {
-    if (!jobId || !enabled) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
+  const query = useQuery<ProcessingResult, Error>({
+    queryKey: queryKeys.jobResult(jobId as string),
+    enabled: Boolean(jobId && enabled),
+    queryFn: async () => {
       const jwt = await getJwt();
-      if (!jwt) throw new Error('No JWT available');
-
-      const data = await resultService.getResults(jobId, jwt);
-      setResult(data);
-      onSuccess?.(data);
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to fetch results');
-      setError(error);
-      onError?.(error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [jobId, enabled, onSuccess, onError, getJwt]);
+      if (!jwt) {
+        throw new Error('No JWT available');
+      }
+      return resultService.getResults(jobId as string, jwt);
+    },
+    staleTime: 30_000,
+    placeholderData: () =>
+      jobId ? useJobStore.getState().results[jobId] ?? undefined : undefined,
+  });
 
   useEffect(() => {
-    if (jobId && enabled) {
-      fetchResult();
+    if (query.data && jobId) {
+      setResultInStore(jobId, query.data);
+      onSuccess?.(query.data);
     }
-  }, [jobId, enabled, fetchResult]);
+  }, [query.data, jobId, setResultInStore, onSuccess]);
+
+  useEffect(() => {
+    if (query.error) {
+      onError?.(query.error);
+    }
+  }, [query.error, onError]);
 
   return {
-    result,
-    isLoading,
-    error,
-    refetch: fetchResult,
+    result: query.data ?? null,
+    isLoading: query.isPending && !query.isPlaceholderData,
+    isFetching: query.isFetching,
+    error: query.error ?? null,
+    refetch: query.refetch,
   };
 }
 

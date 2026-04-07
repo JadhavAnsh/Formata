@@ -1,114 +1,128 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { resultService } from '@/services/result.service';
 import { statusService } from '@/services/status.service';
 import { useAuth } from '@/context/AuthContext';
 import { client } from '@/lib/appwrite';
+import { queryKeys } from '@/lib/queryKeys';
+import { useJobStore } from '@/stores/jobStore';
 import type { Job } from '@/types/job';
 
 interface UseJobStatusOptions {
   jobId: string | null;
-  pollInterval?: number; // milliseconds (fallback if Realtime fails)
+  pollInterval?: number;
   enabled?: boolean;
   onStatusChange?: (job: Job) => void;
 }
 
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+
+function normalizeRealtimeJob(payload: any): Job {
+  return {
+    id: payload.$id,
+    job_id: payload.$id,
+    filename: payload['file-name'] || payload.file_name,
+    status: payload.status,
+    progress:
+      payload.progress !== undefined
+        ? payload.progress <= 1
+          ? payload.progress * 100
+          : payload.progress
+        : 0,
+    createdAt: payload.created_at || payload.$createdAt,
+    updatedAt: payload.completed_at || payload.$updatedAt,
+    metadata: typeof payload.metadata === 'string' ? JSON.parse(payload.metadata) : payload.metadata,
+  };
+}
+
 export function useJobStatus({
   jobId,
-  pollInterval = 5000, // Longer interval for fallback
+  pollInterval = 5000,
   enabled = true,
   onStatusChange,
 }: UseJobStatusOptions) {
   const { getJwt } = useAuth();
-  const [job, setJob] = useState<Job | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const queryClient = useQueryClient();
+  const upsertJob = useJobStore((state) => state.upsertJob);
+  const setCurrentJobId = useJobStore((state) => state.setCurrentJobId);
 
-  const fetchStatus = useCallback(async () => {
-    if (!jobId || !enabled) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
+  const query = useQuery<Job, Error>({
+    queryKey: queryKeys.jobStatus(jobId as string),
+    enabled: Boolean(jobId && enabled),
+    queryFn: async () => {
       const jwt = await getJwt();
-      if (!jwt) throw new Error('No JWT available');
-      
-      const result = await statusService.getJobStatus(jobId, jwt);
-      setJob(result);
-      onStatusChange?.(result);
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to fetch job status');
-      setError(error);
-    } finally {
-      setIsLoading(false);
+      if (!jwt) {
+        throw new Error('No JWT available');
+      }
+      return statusService.getJobStatus(jobId as string, jwt);
+    },
+    staleTime: 0,
+    placeholderData: () =>
+      jobId ? useJobStore.getState().jobs[jobId] ?? undefined : undefined,
+    refetchInterval: (q) => {
+      const status = q.state.data?.status;
+      if (!enabled || !jobId || (status && TERMINAL_STATUSES.has(status))) {
+        return false;
+      }
+      return pollInterval;
+    },
+  });
+
+  useEffect(() => {
+    if (jobId) {
+      setCurrentJobId(jobId);
     }
-  }, [jobId, enabled, onStatusChange, getJwt]);
+  }, [jobId, setCurrentJobId]);
+
+  useEffect(() => {
+    if (query.data) {
+      upsertJob(query.data);
+      onStatusChange?.(query.data);
+    }
+  }, [query.data, upsertJob, onStatusChange]);
 
   useEffect(() => {
     if (!jobId || !enabled) return;
 
-    // 1. Fetch initial state
-    fetchStatus();
-
-    // 2. Set up Appwrite Realtime subscription
     const databaseId = process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID || '';
     const collectionId = process.env.NEXT_PUBLIC_APPWRITE_JOBS_COLLECTION_ID || '';
-    
+
     if (!databaseId || !collectionId) {
-      console.warn('Realtime configuration missing (DB or Collection ID)');
       return;
     }
 
-    // Subscribe to this specific document
     const unsubscribe = client.subscribe(
       `databases.${databaseId}.collections.${collectionId}.documents.${jobId}`,
       (response) => {
-        // Appwrite Realtime returns the raw document
-        const payload = response.payload as any;
-        
-        // Normalize the payload to match Job interface
-        const updatedJob: Job = {
-          id: payload.$id,
-          job_id: payload.$id,
-          filename: payload['file-name'] || payload.file_name,
-          status: payload.status,
-          progress: payload.progress !== undefined 
-            ? (payload.progress <= 1 ? payload.progress * 100 : payload.progress)
-            : 0,
-          createdAt: payload.created_at || payload.$createdAt,
-          updatedAt: payload.completed_at || payload.$updatedAt,
-          metadata: typeof payload.metadata === 'string' ? JSON.parse(payload.metadata) : payload.metadata,
-        };
-        
-        setJob(updatedJob);
+        const updatedJob = normalizeRealtimeJob(response.payload);
+        upsertJob(updatedJob);
+        queryClient.setQueryData(queryKeys.jobStatus(jobId), updatedJob);
+        if (TERMINAL_STATUSES.has(updatedJob.status)) {
+          void getJwt().then((jwt) => {
+            if (!jwt) return;
+            queryClient.prefetchQuery({
+              queryKey: queryKeys.jobResult(jobId),
+              queryFn: () => resultService.getResults(jobId, jwt),
+            });
+          });
+        }
         onStatusChange?.(updatedJob);
-        
-        console.log('Realtime update received:', updatedJob.status, updatedJob.progress);
       }
     );
 
-    // 3. Keep polling as a fallback (optional, but safer)
-    const interval = setInterval(() => {
-      if (job && (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled')) {
-        clearInterval(interval);
-        return;
-      }
-      // Only fetch if we haven't had an update in a while (e.g. 10s)
-      // or just keep it as a backup
-      fetchStatus();
-    }, pollInterval);
-
     return () => {
       unsubscribe();
-      clearInterval(interval);
     };
-  }, [jobId, enabled, pollInterval, fetchStatus]);
+  }, [jobId, enabled, queryClient, upsertJob, onStatusChange, getJwt]);
 
   return {
-    job,
-    isLoading,
-    error,
-    refetch: fetchStatus,
+    job: query.data ?? null,
+    /** Initial load only — avoids full-page “loading” on each poll or background refetch */
+    isLoading: query.isPending && !query.isPlaceholderData,
+    isFetching: query.isFetching,
+    error: query.error ?? null,
+    refetch: query.refetch,
   };
 }

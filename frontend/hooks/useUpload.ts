@@ -1,7 +1,10 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ingestService } from '@/services/ingest.service';
+import { useAuth } from '@/context/AuthContext';
+import { queryKeys } from '@/lib/queryKeys';
+import { useJobStore } from '@/stores/jobStore';
 import type { Job } from '@/types/job';
 
 interface UseUploadOptions {
@@ -10,40 +13,52 @@ interface UseUploadOptions {
 }
 
 export function useUpload(options?: UseUploadOptions) {
-  const [isUploading, setIsUploading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-  const [job, setJob] = useState<Job | null>(null);
+  const { getJwt } = useAuth();
+  const queryClient = useQueryClient();
+  const upsertJob = useJobStore((state) => state.upsertJob);
+  const setCurrentJobId = useJobStore((state) => state.setCurrentJobId);
 
-  const upload = useCallback(
-    async (file: File, uploadOptions?: {
+  const mutation = useMutation<Job, Error, {
+    file: File;
+    uploadOptions?: {
       filters?: Record<string, any>;
       normalization?: Record<string, any>;
-    }) => {
-      setIsUploading(true);
-      setError(null);
-
-      try {
-        const result = await ingestService.uploadFile(file, uploadOptions);
-        setJob(result);
-        options?.onSuccess?.(result);
-        return result;
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error('Upload failed');
-        setError(error);
-        options?.onError?.(error);
-        throw error;
-      } finally {
-        setIsUploading(false);
+    };
+  }>({
+    mutationFn: async ({ file, uploadOptions }) => {
+      const jwt = await getJwt();
+      if (!jwt) {
+        throw new Error('No JWT available');
       }
+      return ingestService.uploadFile(file, jwt, uploadOptions);
     },
-    [options]
-  );
+    onSuccess: (job) => {
+      upsertJob(job);
+      const id = job.job_id || job.id;
+      if (id) {
+        queryClient.setQueryData(queryKeys.jobStatus(id), job);
+      }
+      setCurrentJobId(id || null);
+      options?.onSuccess?.(job);
+    },
+    onError: (error) => {
+      options?.onError?.(error);
+    },
+  });
+
+  const upload = async (
+    file: File,
+    uploadOptions?: {
+      filters?: Record<string, any>;
+      normalization?: Record<string, any>;
+    }
+  ) => mutation.mutateAsync({ file, uploadOptions });
 
   return {
     upload,
-    isUploading,
-    error,
-    job,
+    isUploading: mutation.isPending,
+    error: mutation.error,
+    job: mutation.data ?? null,
   };
 }
 

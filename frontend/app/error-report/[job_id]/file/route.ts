@@ -5,33 +5,6 @@ import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function wrapErrorTextAsHtml(jobId: string, errorText: string) {
-  const body = escapeHtml(errorText || 'No errors to report.');
-  return `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Formata Error Report - ${escapeHtml(jobId)}</title>
-  </head>
-  <body>
-    <main style="max-width: 1200px; margin: 24px auto; padding: 0 16px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;">
-      <h1 style="font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;">Error Report</h1>
-      <p style="font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; opacity: 0.8;">Job ID: ${escapeHtml(jobId)}</p>
-      <pre style="white-space: pre-wrap; word-break: break-word; border: 1px solid #d4d4d8; border-radius: 8px; padding: 16px;">${body}</pre>
-    </main>
-  </body>
-</html>`;
-}
-
 function setRootTheme(html: string, theme: 'light' | 'dark') {
   const htmlTagMatch = html.match(/<html\b[^>]*>/i);
   if (!htmlTagMatch) return html;
@@ -89,6 +62,19 @@ function injectThemeAssets(html: string, theme?: 'light' | 'dark') {
   return `${headInjection}${themeInjection}${themedHtml}`;
 }
 
+async function extractProfileHtml(response: Response): Promise<string> {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const payload = await response.json();
+    const html = payload?.content || payload?.html;
+    if (!html) {
+      throw new Error('No HTML content in profile response');
+    }
+    return html;
+  }
+  return response.text();
+}
+
 export async function GET(request: Request, { params }: { params: Promise<{ job_id: string }> }) {
   const { job_id } = await params;
   const url = new URL(request.url);
@@ -100,9 +86,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ job_
   const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
   try {
-    // Call the backend API to get the generated error report
-    const apiUrl = `${API_BASE_URL}/errors/${job_id}/download`;
-    console.log(`Fetching error report from: ${apiUrl} (JWT provided: ${!!jwt})`);
+    // Call backend profile API (ydata-profiling report)
+    const apiUrl = `${API_BASE_URL}/profile/${job_id}`;
     const response = await fetch(apiUrl, {
       headers: {
         ...(jwt && { 'X-Appwrite-JWT': jwt }),
@@ -113,16 +98,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ job_
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const detail = errorData?.detail || response.statusText;
-      console.error(`Backend returned ${response.status}: ${detail}`);
-      throw new Error(`Failed to fetch error report: ${detail}`);
+      throw new Error(`Failed to fetch profile report: ${detail}`);
     }
 
-    const errorText = await response.text();
-    const html = wrapErrorTextAsHtml(job_id, errorText);
-
-    if (!html) {
-      throw new Error('No content in error report response');
-    }
+    const html = await extractProfileHtml(response);
 
     return new NextResponse(injectThemeAssets(html, theme), {
       headers: {
@@ -131,13 +110,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ job_
       },
     });
   } catch {
-    // Fallback to local text report if API fails
-    const filePath = path.join(process.cwd(), 'storage', 'errors', `${job_id}_errors.txt`);
-    const fallbackPath = path.join(process.cwd(), 'storage', 'errors', `${job_id}_error.txt`);
+    // Fallback to local profile HTML if API fails
+    const filePath = path.join(process.cwd(), 'storage', 'reports', `${job_id}_clean_profile.html`);
+    const fallbackPath = path.join(process.cwd(), `${job_id}_clean_profile.html`);
 
     try {
-      const errorText = await readFile(filePath, 'utf8');
-      const html = wrapErrorTextAsHtml(job_id, errorText);
+      const html = await readFile(filePath, 'utf8');
       return new NextResponse(injectThemeAssets(html, theme), {
         headers: {
           'Content-Type': 'text/html; charset=utf-8',
@@ -146,8 +124,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ job_
       });
     } catch {
       try {
-        const errorText = await readFile(fallbackPath, 'utf8');
-        const html = wrapErrorTextAsHtml(job_id, errorText);
+        const html = await readFile(fallbackPath, 'utf8');
         return new NextResponse(injectThemeAssets(html, theme), {
           headers: {
             'Content-Type': 'text/html; charset=utf-8',

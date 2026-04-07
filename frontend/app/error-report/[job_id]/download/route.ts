@@ -5,6 +5,19 @@ import { NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
 
+async function extractProfileHtml(response: Response): Promise<string> {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const payload = await response.json();
+    const html = payload?.content || payload?.html;
+    if (!html) {
+      throw new Error('No HTML content in profile response');
+    }
+    return html;
+  }
+  return response.text();
+}
+
 export async function GET(request: Request, { params }: { params: Promise<{ job_id: string }> }) {
   const { job_id } = await params;
   const url = new URL(request.url);
@@ -14,8 +27,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ job_
   const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
   try {
-    // Call the backend API to get generated error report file
-    const apiUrl = `${API_BASE_URL}/errors/${job_id}/download`;
+    // Call backend profile API (ydata-profiling report)
+    const apiUrl = `${API_BASE_URL}/profile/${job_id}`;
     const response = await fetch(apiUrl, {
       headers: {
         ...(jwt && { 'X-Appwrite-JWT': jwt }),
@@ -26,29 +39,29 @@ export async function GET(request: Request, { params }: { params: Promise<{ job_
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const detail = errorData?.detail || response.statusText;
-      throw new Error(`Failed to fetch error report: ${detail}`);
+      throw new Error(`Failed to fetch profile report: ${detail}`);
     }
 
-    const reportContent = await response.text();
+    const reportContent = await extractProfileHtml(response);
 
     return new NextResponse(reportContent, {
       headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Content-Disposition': `attachment; filename="${job_id}_errors.txt"`,
+        'Content-Type': 'text/html; charset=utf-8',
+        'Content-Disposition': `attachment; filename="formata-profile-${job_id}.html"`,
         'Cache-Control': 'no-store',
       },
     });
   } catch {
-    // Fallback to local text report if API fails
-    const filePath = path.join(process.cwd(), 'storage', 'errors', `${job_id}_errors.txt`);
-    const fallbackPath = path.join(process.cwd(), 'storage', 'errors', `${job_id}_error.txt`);
+    // Fallback to local profile HTML if API fails
+    const filePath = path.join(process.cwd(), 'storage', 'reports', `${job_id}_clean_profile.html`);
+    const fallbackPath = path.join(process.cwd(), `${job_id}_clean_profile.html`);
 
     try {
       const reportContent = await readFile(filePath, 'utf8');
       return new NextResponse(reportContent, {
         headers: {
-          'Content-Type': 'text/plain; charset=utf-8',
-          'Content-Disposition': `attachment; filename="${job_id}_errors.txt"`,
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Disposition': `attachment; filename="formata-profile-${job_id}.html"`,
           'Cache-Control': 'no-store',
         },
       });
@@ -57,8 +70,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ job_
         const reportContent = await readFile(fallbackPath, 'utf8');
         return new NextResponse(reportContent, {
           headers: {
-            'Content-Type': 'text/plain; charset=utf-8',
-            'Content-Disposition': `attachment; filename="${job_id}_errors.txt"`,
+            'Content-Type': 'text/html; charset=utf-8',
+            'Content-Disposition': `attachment; filename="formata-profile-${job_id}.html"`,
             'Cache-Control': 'no-store',
           },
         });
